@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import type { TranscriptRecord } from '@honey/api-contracts';
+
 import { type AppRouteId } from '@/app/navigation';
 import { backendClient } from '@/api/client';
 import { desktopShellClient } from '@/api/desktopShell';
 import { AppShell } from '@/components/AppShell';
 import { DictationOverlay } from '@/components/DictationOverlay';
 import { MiniWindow } from '@/components/MiniWindow';
-import { useMockDictationHotkey } from '@/hooks/useMockDictationHotkey';
+import { useDictationHotkey } from '@/hooks/useDictationHotkey';
 import { FileTranscriptionPage } from '@/pages/FileTranscriptionPage';
 import { HistoryPage } from '@/pages/HistoryPage';
 import { HomePage } from '@/pages/HomePage';
@@ -41,11 +43,13 @@ export default function App() {
     setTriggerMode,
     setTriggerThresholdMs,
     setOutputRuntimeSettings,
+    publishCompletedRecord,
   } = useDictationUiStore();
-  const handleSessionCompleted = useCallback((record: { outputText: string }) => {
+  const handleSessionCompleted = useCallback((record: TranscriptRecord) => {
     setLatestText(record.outputText);
-  }, []);
-  useMockDictationHotkey({
+    publishCompletedRecord(record);
+  }, [publishCompletedRecord]);
+  useDictationHotkey({
     enabled: true,
     forcePasteApps,
     hotkey,

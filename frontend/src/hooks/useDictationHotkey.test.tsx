@@ -117,7 +117,7 @@ vi.mock('@/api/desktopShell', () => ({
   },
 }));
 
-import { useMockDictationHotkey } from './useMockDictationHotkey';
+import { useDictationHotkey } from './useDictationHotkey';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -152,7 +152,7 @@ const flushAsyncWork = async () => {
   });
 };
 
-describe('useMockDictationHotkey', () => {
+describe('useDictationHotkey', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     useDictationUiStore.setState({
@@ -251,7 +251,7 @@ describe('useMockDictationHotkey', () => {
 
   it('runs a backend direct dictation session from CapsLock release', async () => {
     const onSessionCompleted = vi.fn();
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       latestText: '旧的历史文本不应该覆盖后端结果。',
       onSessionCompleted,
@@ -313,7 +313,7 @@ describe('useMockDictationHotkey', () => {
   });
 
   it('toggles listening with repeated key presses in click-to-toggle mode', async () => {
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       triggerMode: 'click-to-toggle',
     }));
@@ -349,7 +349,7 @@ describe('useMockDictationHotkey', () => {
   });
 
   it('cancels hold-to-talk when the key is released before the trigger threshold', async () => {
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       triggerThresholdMs: 240,
     }));
@@ -381,7 +381,7 @@ describe('useMockDictationHotkey', () => {
 
   it('runs a backend direct dictation session from Tauri global hotkey release', async () => {
     const onSessionCompleted = vi.fn();
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       onSessionCompleted,
     }));
@@ -442,7 +442,7 @@ describe('useMockDictationHotkey', () => {
       },
     });
 
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
     }));
 
@@ -479,7 +479,7 @@ describe('useMockDictationHotkey', () => {
       },
     });
 
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
     }));
 
@@ -498,7 +498,7 @@ describe('useMockDictationHotkey', () => {
   });
 
   it('ignores repeated keydown events while the key is held', () => {
-    renderHook(() => useMockDictationHotkey({ enabled: true }));
+    renderHook(() => useDictationHotkey({ enabled: true }));
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
@@ -509,7 +509,7 @@ describe('useMockDictationHotkey', () => {
   });
 
   it('updates the listening overlay from captured microphone volume levels', () => {
-    renderHook(() => useMockDictationHotkey({ enabled: true }));
+    renderHook(() => useDictationHotkey({ enabled: true }));
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
@@ -538,7 +538,7 @@ describe('useMockDictationHotkey', () => {
   });
 
   it('uses the configured output method when inserting text', async () => {
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       outputMethod: 'typing',
     }));
@@ -558,7 +558,7 @@ describe('useMockDictationHotkey', () => {
   });
 
   it('passes the clipboard restore setting to desktop text insertion', async () => {
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       restoreClipboard: false,
     }));
@@ -578,7 +578,7 @@ describe('useMockDictationHotkey', () => {
   });
 
   it('forces paste insertion for configured source apps', async () => {
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       outputMethod: 'typing',
       forcePasteApps: ['Mock 输入框'],
@@ -605,7 +605,7 @@ describe('useMockDictationHotkey', () => {
       overlaySnapshot: { state: 'idle', mode: 'persona', volumeLevel: 0 },
     });
     const onSessionCompleted = vi.fn();
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       personaId: 'persona-office',
       onSessionCompleted,
@@ -652,7 +652,7 @@ describe('useMockDictationHotkey', () => {
       selectedPersonaId: 'persona-mail',
     } as Parameters<typeof useDictationUiStore.setState>[0]);
 
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
     }));
 
@@ -681,7 +681,7 @@ describe('useMockDictationHotkey', () => {
       });
     runDirectDictationSession.mockResolvedValueOnce(createSessionResult('rec-second', '第二次语音结果'));
 
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       onSessionCompleted,
     }));
@@ -734,7 +734,7 @@ describe('useMockDictationHotkey', () => {
     const onSessionCompleted = vi.fn();
     runDirectDictationSession.mockRejectedValueOnce(new Error('backend offline'));
 
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       onSessionCompleted,
     }));
@@ -771,7 +771,7 @@ describe('useMockDictationHotkey', () => {
       },
     });
 
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
       latestText: '旧结果不能上屏',
       onSessionCompleted,
@@ -795,7 +795,7 @@ describe('useMockDictationHotkey', () => {
   it('does not finish capture or run dictation when desktop capture fails to start', async () => {
     startHoldToTalkCapture.mockRejectedValueOnce(new Error('capture start failed'));
 
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
     }));
 
@@ -822,7 +822,7 @@ describe('useMockDictationHotkey', () => {
     const startCapture = createDeferred<Awaited<ReturnType<typeof startHoldToTalkCapture>>>();
     startHoldToTalkCapture.mockReturnValueOnce(startCapture.promise);
 
-    renderHook(() => useMockDictationHotkey({
+    renderHook(() => useDictationHotkey({
       enabled: true,
     }));
 

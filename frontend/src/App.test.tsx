@@ -42,7 +42,7 @@ const appSettings = vi.hoisted(() => ({
 }));
 const getSettings = vi.hoisted(() => vi.fn(async () => appSettings));
 const dictationOverlay = vi.hoisted(() => vi.fn());
-const useMockDictationHotkey = vi.hoisted(() => vi.fn());
+const useDictationHotkey = vi.hoisted(() => vi.fn());
 const desktopShell = vi.hoisted(() => {
   let windowModeHandler: ((mode: 'full' | 'mini') => void) | undefined;
   const unlistenWindowMode = vi.fn();
@@ -77,8 +77,8 @@ vi.mock('@/api/client', () => ({
     getSettings,
   },
 }));
-vi.mock('@/hooks/useMockDictationHotkey', () => ({
-  useMockDictationHotkey,
+vi.mock('@/hooks/useDictationHotkey', () => ({
+  useDictationHotkey,
 }));
 vi.mock('@/api/desktopShell', () => ({
   desktopShellClient: {
@@ -138,7 +138,7 @@ describe('App', () => {
     listTranscriptRecords.mockClear();
     getSettings.mockClear();
     dictationOverlay.mockClear();
-    useMockDictationHotkey.mockClear();
+    useDictationHotkey.mockClear();
     desktopShell.reset();
   });
 
@@ -146,7 +146,7 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+      expect(useDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
         outputMethod: 'typing',
         forcePasteApps: ['企业微信'],
       }));
@@ -165,7 +165,7 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+      expect(useDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
         hotkey: 'F9',
       }));
     });
@@ -180,7 +180,7 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+      expect(useDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
         triggerMode: 'click-to-toggle',
       }));
     });
@@ -195,7 +195,7 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+      expect(useDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
         triggerThresholdMs: 320,
       }));
     });
@@ -217,7 +217,7 @@ describe('App', () => {
         windowMode: 'mini',
       });
     });
-    expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(useDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
       enabled: true,
     }));
   });
@@ -236,7 +236,7 @@ describe('App', () => {
     await waitFor(() => {
       expect(useDictationUiStore.getState().windowMode).toBe('mini');
     });
-    expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(useDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
       enabled: true,
     }));
   });

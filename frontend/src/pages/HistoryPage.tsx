@@ -5,6 +5,7 @@ import type { PersonaProfile, TranscriptRecord } from '@honey/api-contracts';
 import { backendClient } from '@/api/client';
 import { EmptyState } from '@/components/EmptyState';
 import { StatusBadge } from '@/components/StatusBadge';
+import { useDictationUiStore } from '@/stores/dictationUiStore';
 
 const filterOptions = [
   { key: 'all', label: '全部' },
@@ -15,12 +16,18 @@ const filterOptions = [
 
 type FilterKey = (typeof filterOptions)[number]['key'];
 
+const prependUniqueRecord = (records: TranscriptRecord[], record: TranscriptRecord) => [
+  record,
+  ...records.filter(item => item.id !== record.id),
+];
+
 export function HistoryPage() {
   const [allRecords, setAllRecords] = useState<TranscriptRecord[]>([]);
   const [personas, setPersonas] = useState<PersonaProfile[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const latestCompletedRecord = useDictationUiStore(state => state.latestCompletedRecord);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +46,14 @@ export function HistoryPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!latestCompletedRecord) {
+      return;
+    }
+
+    setAllRecords(records => prependUniqueRecord(records, latestCompletedRecord));
+  }, [latestCompletedRecord]);
 
   const records = useMemo(() => {
     return allRecords.filter((record) => {

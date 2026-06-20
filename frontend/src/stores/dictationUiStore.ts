@@ -5,6 +5,7 @@ import type {
   DictationMode,
   DictationOverlaySnapshot,
   ModelStatus,
+  TranscriptRecord,
 } from '@honey/api-contracts';
 
 interface DictationUiStore {
@@ -21,6 +22,7 @@ interface DictationUiStore {
   overlayEnabled: boolean;
   overlayPosition: AppSettings['overlayPosition'];
   overlaySnapshot: DictationOverlaySnapshot;
+  latestCompletedRecord?: TranscriptRecord;
   setWindowMode: (mode: AppWindowMode) => void;
   setCurrentMode: (mode: DictationMode) => void;
   setHotkey: (hotkey: string) => void;
@@ -35,6 +37,7 @@ interface DictationUiStore {
   setOverlayEnabled: (enabled: boolean) => void;
   setOverlayPosition: (position: AppSettings['overlayPosition']) => void;
   setOverlaySnapshot: (snapshot: DictationOverlaySnapshot) => void;
+  publishCompletedRecord: (record: TranscriptRecord) => void;
 }
 
 export const useDictationUiStore = create<DictationUiStore>((set) => ({
@@ -51,6 +54,7 @@ export const useDictationUiStore = create<DictationUiStore>((set) => ({
   overlayEnabled: true,
   overlayPosition: 'bottom-center',
   overlaySnapshot: { state: 'idle', mode: 'direct', volumeLevel: 0 },
+  latestCompletedRecord: undefined,
   setWindowMode: (windowMode) => set({ windowMode }),
   setCurrentMode: (currentMode) => set({ currentMode }),
   setHotkey: (hotkey) => set({ hotkey }),
@@ -65,4 +69,5 @@ export const useDictationUiStore = create<DictationUiStore>((set) => ({
   setOverlayEnabled: (overlayEnabled) => set({ overlayEnabled }),
   setOverlayPosition: (overlayPosition) => set({ overlayPosition }),
   setOverlaySnapshot: (overlaySnapshot) => set({ overlaySnapshot }),
+  publishCompletedRecord: (latestCompletedRecord) => set({ latestCompletedRecord }),
 }));

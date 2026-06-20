@@ -47,9 +47,13 @@ vi.mock('@/api/client', () => ({
 }));
 
 import { HistoryPage } from './HistoryPage';
+import { useDictationUiStore } from '@/stores/dictationUiStore';
 
 describe('HistoryPage', () => {
   beforeEach(() => {
+    useDictationUiStore.setState({
+      latestCompletedRecord: undefined,
+    } as Parameters<typeof useDictationUiStore.setState>[0]);
     historyStore.records = [
       {
         id: 'rec-test',
@@ -92,5 +96,26 @@ describe('HistoryPage', () => {
 
     expect(deleteTranscriptRecord).toHaveBeenCalledWith('rec-test');
     expect(screen.queryByText('测试后端历史输出')).not.toBeInTheDocument();
+  });
+
+  it('prepends a newly completed dictation record while the page is open', async () => {
+    render(<HistoryPage />);
+
+    expect(await screen.findByText('测试后端历史输出')).toBeInTheDocument();
+
+    useDictationUiStore.getState().publishCompletedRecord?.({
+      id: 'rec-live',
+      createdAt: '2026-06-20T12:00:00+08:00',
+      sourceApp: '当前输入框',
+      mode: 'direct',
+      rawText: '刚说完的新语音',
+      outputText: '刚说完的新语音',
+      durationMs: 1200,
+      latencyMs: 0,
+      status: 'completed',
+    });
+
+    expect(await screen.findByText('刚说完的新语音')).toBeInTheDocument();
+    expect(screen.getByText('2 条')).toBeInTheDocument();
   });
 });

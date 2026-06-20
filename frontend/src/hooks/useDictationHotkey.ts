@@ -5,14 +5,14 @@ import { backendClient } from '@/api/client';
 import { desktopShellClient } from '@/api/desktopShell';
 import { useDictationUiStore } from '@/stores/dictationUiStore';
 
-interface UseMockDictationHotkeyOptions {
+interface UseDictationHotkeyOptions {
   enabled: boolean;
   hotkey?: string;
   triggerMode?: 'hold-to-talk' | 'click-to-toggle';
   triggerThresholdMs?: number;
   latestText?: string;
   forcePasteApps?: string[];
-  mockAudioPath?: string;
+  fallbackAudioPath?: string;
   outputMethod?: 'paste' | 'typing';
   restoreClipboard?: boolean;
   personaId?: string;
@@ -20,20 +20,20 @@ interface UseMockDictationHotkeyOptions {
   onSessionCompleted?: (record: TranscriptRecord) => void;
 }
 
-export function useMockDictationHotkey({
+export function useDictationHotkey({
   enabled,
   hotkey = 'CapsLock',
   triggerMode = 'hold-to-talk',
   triggerThresholdMs = 0,
   latestText,
   forcePasteApps = [],
-  mockAudioPath = 'mock://hold-to-talk.wav',
+  fallbackAudioPath = 'mock://hold-to-talk.wav',
   outputMethod = 'paste',
   restoreClipboard = true,
   personaId,
-  sourceApp = 'Mock 输入框',
+  sourceApp = '当前输入框',
   onSessionCompleted,
-}: UseMockDictationHotkeyOptions) {
+}: UseDictationHotkeyOptions) {
   const pressedRef = useRef(false);
   const pressedAtRef = useRef<number | undefined>(undefined);
   const timersRef = useRef<number[]>([]);
@@ -168,7 +168,7 @@ export function useMockDictationHotkey({
             return undefined;
           }
 
-          const audioPath = capture.audioPath ?? uploadedAudio?.audioPath ?? mockAudioPath;
+          const audioPath = capture.audioPath ?? uploadedAudio?.audioPath ?? fallbackAudioPath;
           const session = currentMode === 'persona'
             ? await backendClient.runPersonaDictationSession({
               audioPath,
@@ -344,5 +344,5 @@ export function useMockDictationHotkey({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [enabled, forcePasteApps, hotkey, latestText, mockAudioPath, onSessionCompleted, outputMethod, personaId, restoreClipboard, sourceApp, triggerMode, triggerThresholdMs]);
+  }, [enabled, fallbackAudioPath, forcePasteApps, hotkey, latestText, onSessionCompleted, outputMethod, personaId, restoreClipboard, sourceApp, triggerMode, triggerThresholdMs]);
 }
