@@ -83,6 +83,9 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     useDictationUiStore.setState(state => ({
       ...state,
+      windowMode: 'mini',
+      currentMode: 'direct',
+      overlayEnabled: false,
       outputMethod: 'paste',
       forcePasteApps: [],
     }));
@@ -146,6 +149,33 @@ describe('SettingsPage', () => {
     expect(useDictationUiStore.getState().forcePasteApps).toEqual(['测试应用']);
   });
 
+  it('syncs saved hotkey settings to the dictation runtime state', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await screen.findByDisplayValue('F9');
+    await user.clear(screen.getByLabelText('键盘热键'));
+    await user.type(screen.getByLabelText('键盘热键'), 'F10');
+    await user.click(screen.getByRole('button', { name: '保存设置' }));
+
+    expect(useDictationUiStore.getState()).toMatchObject({
+      hotkey: 'F10',
+    });
+  });
+
+  it('syncs saved overlay visibility to the dictation runtime state', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await screen.findByDisplayValue('F9');
+    await user.click(screen.getByLabelText('显示听写浮层'));
+    await user.click(screen.getByRole('button', { name: '保存设置' }));
+
+    expect(useDictationUiStore.getState()).toMatchObject({
+      overlayEnabled: true,
+    });
+  });
+
   it('applies desktop window mode immediately through the desktop shell', async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
@@ -157,6 +187,7 @@ describe('SettingsPage', () => {
     expect(updateSettings).toHaveBeenCalledWith({
       defaultWindowMode: 'full',
     });
+    expect(useDictationUiStore.getState().windowMode).toBe('full');
     expect(screen.getByText('窗口模式已切换')).toBeInTheDocument();
   });
 

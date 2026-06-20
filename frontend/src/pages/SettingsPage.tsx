@@ -15,7 +15,11 @@ const splitList = (value: string) => value
   .filter(Boolean);
 
 export function SettingsPage() {
+  const setCurrentMode = useDictationUiStore(state => state.setCurrentMode);
+  const setHotkey = useDictationUiStore(state => state.setHotkey);
+  const setOverlayEnabled = useDictationUiStore(state => state.setOverlayEnabled);
   const setOutputRuntimeSettings = useDictationUiStore(state => state.setOutputRuntimeSettings);
+  const setWindowMode = useDictationUiStore(state => state.setWindowMode);
   const [settings, setSettings] = useState<AppSettings>();
   const [settingsPatch, setSettingsPatch] = useState<UpdateAppSettings>({});
   const [feedback, setFeedback] = useState('');
@@ -48,6 +52,9 @@ export function SettingsPage() {
 
     const savedSettings = await backendClient.updateSettings(settingsPatch);
     setSettings(savedSettings);
+    setHotkey(savedSettings.hotkey);
+    setCurrentMode(savedSettings.personaModeEnabled ? savedSettings.defaultMode : 'direct');
+    setOverlayEnabled(savedSettings.overlayEnabled);
     setOutputRuntimeSettings({
       outputMethod: savedSettings.outputMethod,
       restoreClipboard: savedSettings.restoreClipboard,
@@ -67,6 +74,7 @@ export function SettingsPage() {
         ...remainingPatch,
       });
       setSettingsPatch(remainingPatch);
+      setWindowMode(mode);
       setFeedback('窗口模式已切换');
     } catch {
       setFeedback('窗口模式切换失败');

@@ -19,17 +19,20 @@ import { useDictationUiStore } from '@/stores/dictationUiStore';
 export default function App() {
   const [activeRoute, setActiveRoute] = useState<AppRouteId>('home');
   const [latestText, setLatestText] = useState<string>();
-  const [hotkey, setHotkey] = useState('CapsLock');
   const {
     windowMode,
     setWindowMode,
     currentMode,
+    hotkey,
     asrModelStatus,
+    overlayEnabled,
     overlaySnapshot,
     forcePasteApps,
     outputMethod,
     restoreClipboard,
     setCurrentMode,
+    setHotkey,
+    setOverlayEnabled,
     setOutputRuntimeSettings,
   } = useDictationUiStore();
   const handleSessionCompleted = useCallback((record: { outputText: string }) => {
@@ -56,6 +59,7 @@ export default function App() {
         setLatestText(records[0]?.outputText);
         setHotkey(settings.hotkey);
         setCurrentMode(settings.personaModeEnabled ? settings.defaultMode : 'direct');
+        setOverlayEnabled(settings.overlayEnabled);
         setWindowMode(settings.defaultWindowMode);
         setOutputRuntimeSettings({
           outputMethod: settings.outputMethod,
@@ -68,7 +72,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [setCurrentMode, setOutputRuntimeSettings, setWindowMode]);
+  }, [setCurrentMode, setHotkey, setOverlayEnabled, setOutputRuntimeSettings, setWindowMode]);
 
   const page = useMemo(() => {
     switch (activeRoute) {
@@ -110,7 +114,7 @@ export default function App() {
       <AppShell activeRoute={activeRoute} onRouteChange={setActiveRoute} onOpenMini={() => setWindowMode('mini')}>
         {page}
       </AppShell>
-      <DictationOverlay snapshot={overlaySnapshot} />
+      {overlayEnabled ? <DictationOverlay snapshot={overlaySnapshot} /> : null}
     </>
   );
 }

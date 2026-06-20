@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listTranscriptRecords = vi.hoisted(() => vi.fn(async () => [
@@ -41,6 +41,7 @@ const appSettings = vi.hoisted(() => ({
   punctuationCleanupApps: [],
 }));
 const getSettings = vi.hoisted(() => vi.fn(async () => appSettings));
+const dictationOverlay = vi.hoisted(() => vi.fn());
 const useMockDictationHotkey = vi.hoisted(() => vi.fn());
 
 vi.mock('@/api/client', () => ({
@@ -56,7 +57,10 @@ vi.mock('@/components/AppShell', () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
 }));
 vi.mock('@/components/DictationOverlay', () => ({
-  DictationOverlay: () => null,
+  DictationOverlay: (props: unknown) => {
+    dictationOverlay(props);
+    return <div data-testid="dictation-overlay" />;
+  },
 }));
 vi.mock('@/components/MiniWindow', () => ({
   MiniWindow: () => null,
@@ -94,10 +98,12 @@ describe('App', () => {
     useDictationUiStore.setState({
       windowMode: 'full',
       currentMode: 'direct',
+      overlayEnabled: true,
       overlaySnapshot: { state: 'idle', mode: 'direct', volumeLevel: 0 },
     });
     listTranscriptRecords.mockClear();
     getSettings.mockClear();
+    dictationOverlay.mockClear();
     useMockDictationHotkey.mockClear();
   });
 
@@ -149,5 +155,18 @@ describe('App', () => {
     expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
       enabled: false,
     }));
+  });
+
+  it('hides the dictation overlay when settings disable it', async () => {
+    getSettings.mockResolvedValueOnce({
+      ...appSettings,
+      overlayEnabled: false,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('dictation-overlay')).not.toBeInTheDocument();
+    });
   });
 });
