@@ -67,6 +67,10 @@ describe('desktopShell', () => {
       enabled: true,
     });
     await expect(client.pickAudioFile()).resolves.toBeUndefined();
+    await expect(client.openPath({ path: 'D:\\honey\\file-transcriptions\\task-created' })).resolves.toEqual({
+      ok: true,
+      path: 'D:\\honey\\file-transcriptions\\task-created',
+    });
     await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock' })).resolves.toMatchObject({
       ok: true,
       state: 'listening',
@@ -281,6 +285,10 @@ describe('desktopShell', () => {
         return { ok: true, path: 'D:\\recordings\\客户访谈.mp3' };
       }
 
+      if (command === 'honey_open_path') {
+        return { ok: true, path: (args as { path: string }).path };
+      }
+
       if (command === 'honey_start_hold_to_talk_capture') {
         return {
           ok: true,
@@ -363,6 +371,10 @@ describe('desktopShell', () => {
       enabled: true,
     });
     await expect(client.pickAudioFile()).resolves.toBe('D:\\recordings\\客户访谈.mp3');
+    await expect(client.openPath({ path: 'D:\\honey\\file-transcriptions\\task-created' })).resolves.toEqual({
+      ok: true,
+      path: 'D:\\honey\\file-transcriptions\\task-created',
+    });
     await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel: vi.fn() })).resolves.toMatchObject({
       state: 'listening',
       audioPath: captureAudioPath,
@@ -394,6 +406,7 @@ describe('desktopShell', () => {
     expect(invoke).toHaveBeenCalledWith('honey_set_tray_enabled', { enabled: false });
     expect(invoke).toHaveBeenCalledWith('honey_set_startup_enabled', { enabled: true });
     expect(invoke).toHaveBeenCalledWith('honey_pick_audio_file');
+    expect(invoke).toHaveBeenCalledWith('honey_open_path', { path: 'D:\\honey\\file-transcriptions\\task-created' });
     expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'CapsLock' });
     expect(invoke).toHaveBeenCalledWith('honey_finish_hold_to_talk_capture');
     expect(invoke).toHaveBeenCalledWith('honey_cancel_hold_to_talk_capture');
@@ -696,5 +709,16 @@ describe('desktopShell', () => {
     const client = createDesktopShellClient();
 
     await expect(client.pickAudioFile()).rejects.toThrow('Invalid audio file picker response');
+  });
+
+  it('rejects malformed Tauri open path responses', async () => {
+    window.__TAURI__ = {
+      core: {
+        invoke: vi.fn(async () => ({ ok: false, path: 'D:\\honey' })),
+      },
+    };
+    const client = createDesktopShellClient();
+
+    await expect(client.openPath({ path: 'D:\\honey' })).rejects.toThrow('Invalid open path response');
   });
 });

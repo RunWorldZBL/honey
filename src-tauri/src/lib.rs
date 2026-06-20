@@ -94,6 +94,12 @@ struct BackendProcessState {
     detail: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OpenPathCommand {
+    executable: String,
+    args: Vec<String>,
+}
+
 fn desktop_window_mode() -> &'static Mutex<String> {
     DESKTOP_WINDOW_MODE.get_or_init(|| Mutex::new("full".to_string()))
 }
@@ -153,6 +159,36 @@ fn startup_enabled_json(enabled: bool) -> serde_json::Value {
         "ok": true,
         "enabled": enabled
     })
+}
+
+fn resolve_open_path_command(path: &str) -> Result<OpenPathCommand, String> {
+    let normalized_path = path.trim();
+    if normalized_path.is_empty() {
+        return Err("invalid_open_path".to_string());
+    }
+
+    let executable = if cfg!(windows) {
+        "explorer.exe"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+
+    Ok(OpenPathCommand {
+        executable: executable.to_string(),
+        args: vec![normalized_path.to_string()],
+    })
+}
+
+fn run_open_path(path: &str) -> Result<String, String> {
+    let command = resolve_open_path_command(path)?;
+    Command::new(&command.executable)
+        .args(&command.args)
+        .spawn()
+        .map_err(|error| format!("open_path_failed:{error}"))?;
+
+    Ok(command.args[0].clone())
 }
 
 fn set_startup_enabled_state(enabled: bool) -> serde_json::Value {
@@ -914,6 +950,7 @@ pub fn run() {
             honey_set_tray_enabled,
             honey_set_startup_enabled,
             honey_pick_audio_file,
+            honey_open_path,
             honey_register_hold_to_talk_hotkey,
             honey_unregister_hold_to_talk_hotkey,
             honey_start_hold_to_talk_capture,
@@ -1111,6 +1148,16 @@ async fn honey_pick_audio_file(app: tauri::AppHandle) -> Result<serde_json::Valu
     Ok(serde_json::json!({
         "ok": true,
         "path": path
+    }))
+}
+
+#[tauri::command]
+fn honey_open_path(path: String) -> Result<serde_json::Value, String> {
+    let opened_path = run_open_path(&path)?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "path": opened_path
     }))
 }
 
@@ -1470,6 +1517,26 @@ mod tests {
         let disabled = set_startup_enabled_state(false);
         assert_eq!(disabled["ok"], true);
         assert_eq!(disabled["enabled"], false);
+    }
+
+    #[test]
+    fn resolves_system_open_path_command() {
+        let command = resolve_open_path_command("D:\\honey\\file-transcriptions\\task-created")
+            .expect("open path command should be valid");
+
+        if cfg!(windows) {
+            assert_eq!(command.executable, "explorer.exe");
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(command.executable, "open");
+        } else {
+            assert_eq!(command.executable, "xdg-open");
+        }
+
+        assert_eq!(
+            command.args,
+            vec!["D:\\honey\\file-transcriptions\\task-created".to_string()],
+        );
+        assert!(resolve_open_path_command(" ").is_err());
     }
 
     #[test]

@@ -68,6 +68,7 @@ export interface DesktopShellClient {
   startBackendProcess(): Promise<DesktopBackendProcessResult>;
   stopBackendProcess(): Promise<DesktopBackendProcessResult>;
   pickAudioFile(): Promise<string | undefined>;
+  openPath(input: { path: string }): Promise<{ ok: true; path: string }>;
   getWindowMode(): Promise<DesktopWindowMode>;
   setWindowMode(mode: DesktopWindowMode): Promise<{ ok: true; mode: DesktopWindowMode }>;
   setTrayEnabled(enabled: boolean): Promise<{ ok: true; enabled: boolean }>;
@@ -427,6 +428,22 @@ const parseAudioFilePickerResult = (value: unknown): string | undefined => {
   return result.path;
 };
 
+const parseOpenPathResult = (value: unknown): { ok: true; path: string } => {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid open path response');
+  }
+
+  const result = value as Partial<{ ok: unknown; path: unknown }>;
+  if (result.ok !== true || typeof result.path !== 'string' || result.path.trim().length === 0) {
+    throw new Error('Invalid open path response');
+  }
+
+  return {
+    ok: true,
+    path: result.path,
+  };
+};
+
 const parseCapabilities = (value: unknown): DesktopShellCapabilities => {
   if (!value || typeof value !== 'object') {
     return fallbackCapabilities;
@@ -646,6 +663,16 @@ export function createDesktopShellClient(): DesktopShellClient {
       return invoke
         ? parseAudioFilePickerResult(await invoke('honey_pick_audio_file'))
         : undefined;
+    },
+    async openPath(input) {
+      if (input.path.trim().length === 0) {
+        throw new Error('Invalid open path response');
+      }
+
+      const invoke = getTauriInvoke();
+      return invoke
+        ? parseOpenPathResult(await invoke('honey_open_path', input))
+        : { ok: true, path: input.path };
     },
     async getWindowMode() {
       const invoke = getTauriInvoke();

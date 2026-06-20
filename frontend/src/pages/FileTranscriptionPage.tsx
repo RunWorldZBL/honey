@@ -98,6 +98,14 @@ export function FileTranscriptionPage() {
     }
   };
 
+  const openResult = async (resultPath: string) => {
+    try {
+      await desktopShellClient.openPath({ path: resultPath });
+    } catch {
+      setFeedback('无法打开结果目录，请检查本地路径是否存在');
+    }
+  };
+
   return (
     <div className="page-stack">
       <section className="page-header">
@@ -173,7 +181,12 @@ export function FileTranscriptionPage() {
               <StatusBadge label={taskLabel[task.status]} tone={taskTone[task.status]} />
               <progress value={task.progress} max={100} />
               {task.transcriptText ? <p>{task.transcriptText}</p> : null}
-              <button type="button" className="secondary-button" disabled={!task.resultPath}>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={!task.resultPath}
+                onClick={() => task.resultPath && void openResult(task.resultPath)}
+              >
                 打开结果
               </button>
             </article>

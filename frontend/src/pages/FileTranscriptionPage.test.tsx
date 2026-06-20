@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { FileTranscriptionTask } from '@honey/api-contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const listFileTranscriptionTasks = vi.hoisted(() => vi.fn(async () => [
+const seedFileTranscriptionTasks: FileTranscriptionTask[] = [
   {
     id: 'task-file',
     fileName: '后端会议录音.wav',
@@ -10,7 +11,8 @@ const listFileTranscriptionTasks = vi.hoisted(() => vi.fn(async () => [
     progress: 64,
     outputFormats: ['srt', 'txt'],
   },
-]));
+];
+const listFileTranscriptionTasks = vi.hoisted(() => vi.fn(async () => seedFileTranscriptionTasks));
 const createFileTranscriptionTask = vi.hoisted(() => vi.fn(async (input: {
   filePath: string;
   fileName?: string;
@@ -25,6 +27,10 @@ const createFileTranscriptionTask = vi.hoisted(() => vi.fn(async (input: {
   transcriptText: '客户说明天继续推进。',
 })));
 const pickAudioFile = vi.hoisted(() => vi.fn(async () => 'D:\\recordings\\客户访谈.mp3'));
+const openPath = vi.hoisted(() => vi.fn(async ({ path }: { path: string }) => ({
+  ok: true as const,
+  path,
+})));
 
 vi.mock('@/api/client', () => ({
   backendClient: {
@@ -36,6 +42,7 @@ vi.mock('@/api/client', () => ({
 vi.mock('@/api/desktopShell', () => ({
   desktopShellClient: {
     pickAudioFile,
+    openPath,
   },
 }));
 
@@ -46,6 +53,7 @@ describe('FileTranscriptionPage', () => {
     listFileTranscriptionTasks.mockClear();
     createFileTranscriptionTask.mockClear();
     pickAudioFile.mockClear();
+    openPath.mockClear();
     pickAudioFile.mockResolvedValue('D:\\recordings\\客户访谈.mp3');
   });
 
@@ -92,6 +100,30 @@ describe('FileTranscriptionPage', () => {
       filePath: 'D:\\recordings\\客户访谈.mp3',
       fileName: '客户访谈.mp3',
       outputFormats: ['srt', 'txt', 'json', 'merged-txt'],
+    });
+  });
+
+  it('opens the generated result directory for completed file transcription tasks', async () => {
+    const user = userEvent.setup();
+    listFileTranscriptionTasks.mockResolvedValueOnce([
+      {
+        id: 'task-completed',
+        fileName: '客户访谈.mp3',
+        status: 'completed',
+        progress: 100,
+        outputFormats: ['txt', 'json'],
+        resultPath: 'D:\\honey\\file-transcriptions\\task-completed',
+        transcriptText: '客户说明天继续推进。',
+      },
+    ]);
+
+    render(<FileTranscriptionPage />);
+
+    expect(await screen.findByText('客户访谈.mp3')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '打开结果' }));
+
+    expect(openPath).toHaveBeenCalledWith({
+      path: 'D:\\honey\\file-transcriptions\\task-completed',
     });
   });
 });
