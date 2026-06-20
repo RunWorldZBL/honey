@@ -133,14 +133,17 @@ export default function App() {
 
   if (windowMode === 'mini') {
     return (
-      <div className="mini-stage">
-        <MiniWindow
-          mode={currentMode}
-          asrStatus={asrModelStatus}
-          latestText={latestText}
-          onOpenFull={() => setWindowMode('full')}
-        />
-      </div>
+      <>
+        <div className="mini-stage">
+          <MiniWindow
+            mode={currentMode}
+            asrStatus={asrModelStatus}
+            latestText={latestText}
+            onOpenFull={() => setWindowMode('full')}
+          />
+        </div>
+        {overlayEnabled ? <DictationOverlay position={overlayPosition} snapshot={overlaySnapshot} /> : null}
+      </>
     );
   }
 

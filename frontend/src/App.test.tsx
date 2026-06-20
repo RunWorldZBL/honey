@@ -241,6 +241,33 @@ describe('App', () => {
     }));
   });
 
+  it('keeps the dictation overlay visible in mini window mode', async () => {
+    useDictationUiStore.setState({
+      overlaySnapshot: {
+        state: 'listening',
+        mode: 'direct',
+        volumeLevel: 0.6,
+      },
+    });
+    getSettings.mockResolvedValueOnce({
+      ...appSettings,
+      defaultWindowMode: 'mini',
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(useDictationUiStore.getState().windowMode).toBe('mini');
+    });
+    expect(screen.getByTestId('dictation-overlay')).toBeInTheDocument();
+    expect(dictationOverlay).toHaveBeenLastCalledWith(expect.objectContaining({
+      position: 'bottom-center',
+      snapshot: expect.objectContaining({
+        state: 'listening',
+      }),
+    }));
+  });
+
   it('syncs tray preference from settings into the desktop shell', async () => {
     getSettings.mockResolvedValueOnce({
       ...appSettings,
