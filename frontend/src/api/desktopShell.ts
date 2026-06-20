@@ -630,52 +630,38 @@ export function createDesktopShellClient(): DesktopShellClient {
       });
     },
     async startHoldToTalkCapture(input) {
-      const browserCaptureStarted = await startBrowserAudioCapture(input.hotkey, input.onVolumeLevel);
       const invoke = getTauriInvoke();
-      if (!invoke) {
-        return fallbackCaptureResult('listening', input.hotkey);
-      }
-
-      try {
+      if (invoke) {
         return parseHoldToTalkCaptureResult(await invoke('honey_start_hold_to_talk_capture', { hotkey: input.hotkey }));
-      } catch (error) {
-        if (browserCaptureStarted) {
-          cancelBrowserAudioCapture();
-        }
-
-        throw error;
       }
+
+      await startBrowserAudioCapture(input.hotkey, input.onVolumeLevel);
+      return fallbackCaptureResult('listening', input.hotkey);
     },
     async finishHoldToTalkCapture() {
-      const audioCapture = await finishBrowserAudioCapture();
       const invoke = getTauriInvoke();
-      if (!invoke) {
-        return audioCapture
-          ? {
-            ok: true,
-            state: 'captured',
-            hotkey: 'CapsLock',
-            audioCapture,
-          }
-          : fallbackCaptureResult('captured');
+      if (invoke) {
+        return parseHoldToTalkCaptureResult(await invoke('honey_finish_hold_to_talk_capture'));
       }
 
-      const capture = parseHoldToTalkCaptureResult(await invoke('honey_finish_hold_to_talk_capture'));
+      const audioCapture = await finishBrowserAudioCapture();
       return audioCapture
         ? {
-          ...capture,
+          ok: true,
+          state: 'captured',
+          hotkey: 'CapsLock',
           audioCapture,
         }
-        : capture;
+        : fallbackCaptureResult('captured');
     },
     async cancelHoldToTalkCapture() {
-      cancelBrowserAudioCapture();
       const invoke = getTauriInvoke();
-      if (!invoke) {
-        return fallbackCaptureResult('cancelled');
+      if (invoke) {
+        return parseHoldToTalkCaptureResult(await invoke('honey_cancel_hold_to_talk_capture'));
       }
 
-      return parseHoldToTalkCaptureResult(await invoke('honey_cancel_hold_to_talk_capture'));
+      cancelBrowserAudioCapture();
+      return fallbackCaptureResult('cancelled');
     },
     async insertText(input) {
       const restoreClipboard = input.restoreClipboard ?? true;

@@ -372,6 +372,61 @@ describe('desktopShell', () => {
     expect(invoke).not.toHaveBeenCalledWith('honey_get_settings');
   });
 
+  it('does not use browser microphone capture when Tauri native capture is available', async () => {
+    const getUserMedia = vi.fn(async () => ({
+      getTracks: () => [{ stop: vi.fn() }],
+    }));
+    const invoke = vi.fn(async (command: string, args?: unknown) => {
+      if (command === 'honey_start_hold_to_talk_capture') {
+        return {
+          ok: true,
+          state: 'listening',
+          hotkey: (args as { hotkey: string }).hotkey,
+          audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+        };
+      }
+
+      if (command === 'honey_finish_hold_to_talk_capture') {
+        return {
+          ok: true,
+          state: 'captured',
+          hotkey: 'CapsLock',
+          audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+        };
+      }
+
+      throw new Error(`unexpected command ${command}`);
+    });
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    vi.stubGlobal('MediaRecorder', class FakeMediaRecorder extends EventTarget {
+      static isTypeSupported = vi.fn(() => true);
+      readonly mimeType = 'audio/webm';
+      state: 'inactive' | 'recording' = 'inactive';
+
+      start() {
+        this.state = 'recording';
+      }
+
+      stop() {
+        this.state = 'inactive';
+        this.dispatchEvent(new Event('stop'));
+      }
+    });
+    window.__TAURI__ = { core: { invoke } };
+    const client = createDesktopShellClient();
+
+    await client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel: vi.fn() });
+    await client.finishHoldToTalkCapture();
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'CapsLock' });
+    expect(invoke).toHaveBeenCalledWith('honey_finish_hold_to_talk_capture');
+  });
+
   it('registers Tauri global hold-to-talk hotkeys and listens for pressed state changes', async () => {
     let hotkeyHandler: ((event: { payload?: unknown }) => void) | undefined;
     const unlisten = vi.fn();

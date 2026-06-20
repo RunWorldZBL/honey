@@ -1,9 +1,15 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, net::TcpStream};
 
+#[cfg(not(test))]
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+#[cfg(not(test))]
+use std::sync::mpsc;
+#[cfg(not(test))]
+use std::thread::{self, JoinHandle};
 use tauri::Emitter;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -15,12 +21,24 @@ static BACKEND_PROCESS: OnceLock<Mutex<BackendProcessState>> = OnceLock::new();
 const HOLD_TO_TALK_HOTKEY_EVENT: &str = "honey://hold-to-talk-hotkey";
 const DEFAULT_BACKEND_HOST: &str = "127.0.0.1";
 const DEFAULT_BACKEND_PORT: u16 = 33577;
+const HOLD_TO_TALK_SAMPLE_RATE: u32 = 16_000;
 
-#[derive(Clone)]
 struct HoldToTalkCapture {
     state: String,
     hotkey: String,
     audio_path: Option<String>,
+    recorder: Option<NativeAudioRecorder>,
+}
+
+struct NativeAudioRecorder {
+    path: PathBuf,
+    samples: Arc<Mutex<Vec<f32>>>,
+    source_sample_rate: u32,
+    channels: usize,
+    #[cfg(not(test))]
+    stop_sender: mpsc::Sender<()>,
+    #[cfg(not(test))]
+    thread: JoinHandle<Result<(), String>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,6 +73,7 @@ fn hold_to_talk_capture() -> &'static Mutex<HoldToTalkCapture> {
             state: "cancelled".to_string(),
             hotkey: "CapsLock".to_string(),
             audio_path: None,
+            recorder: None,
         })
     })
 }
@@ -171,18 +190,25 @@ fn resolve_backend_process_config_from_pairs_with_sidecar(
     } else if has_executable_override || sidecar_executable.is_some() {
         Vec::new()
     } else {
-        vec!["--filter".to_string(), "backend".to_string(), "dev".to_string()]
+        vec![
+            "--filter".to_string(),
+            "backend".to_string(),
+            "dev".to_string(),
+        ]
     };
-    let cwd = env_pair_value(env_pairs, "HONEY_BACKEND_CWD")
-        .unwrap_or_else(|| {
-            sidecar_executable
-                .map(|path| sidecar_working_directory(path, fallback_cwd))
-                .unwrap_or_else(|| fallback_cwd.to_string())
-        });
+    let cwd = env_pair_value(env_pairs, "HONEY_BACKEND_CWD").unwrap_or_else(|| {
+        sidecar_executable
+            .map(|path| sidecar_working_directory(path, fallback_cwd))
+            .unwrap_or_else(|| fallback_cwd.to_string())
+    });
     let host = env_pair_value(env_pairs, "HONEY_BACKEND_HOST")
         .unwrap_or_else(|| DEFAULT_BACKEND_HOST.to_string());
     let port = env_pair_value(env_pairs, "HONEY_BACKEND_PORT")
-        .map(|value| value.parse::<u16>().map_err(|_| "invalid_backend_port".to_string()))
+        .map(|value| {
+            value
+                .parse::<u16>()
+                .map_err(|_| "invalid_backend_port".to_string())
+        })
         .transpose()?
         .unwrap_or(DEFAULT_BACKEND_PORT);
 
@@ -343,7 +369,7 @@ fn hold_to_talk_capture_json(capture: &HoldToTalkCapture) -> serde_json::Value {
     value
 }
 
-fn create_hold_to_talk_audio_file() -> Result<String, String> {
+fn create_hold_to_talk_audio_path() -> Result<PathBuf, String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "capture_clock_error".to_string())?
@@ -353,35 +379,289 @@ fn create_hold_to_talk_audio_file() -> Result<String, String> {
     path.push("captures");
     std::fs::create_dir_all(&path).map_err(|error| format!("capture_dir_unavailable:{error}"))?;
     path.push(format!("hold-to-talk-{timestamp}.wav"));
-    write_empty_wav_file(&path)?;
 
-    Ok(path.to_string_lossy().into_owned())
+    Ok(path)
 }
 
-fn write_empty_wav_file(path: &Path) -> Result<(), String> {
-    let sample_rate = 16_000u32;
+#[cfg(test)]
+fn start_native_audio_recorder(path: PathBuf) -> Result<NativeAudioRecorder, String> {
+    let samples = (0..640)
+        .map(|index| if index % 2 == 0 { 0.35 } else { -0.35 })
+        .collect::<Vec<f32>>();
+
+    Ok(NativeAudioRecorder {
+        path,
+        samples: Arc::new(Mutex::new(samples)),
+        source_sample_rate: HOLD_TO_TALK_SAMPLE_RATE,
+        channels: 1,
+    })
+}
+
+#[cfg(not(test))]
+fn start_native_audio_recorder(path: PathBuf) -> Result<NativeAudioRecorder, String> {
+    let (stop_sender, stop_receiver) = mpsc::channel::<()>();
+    let (ready_sender, ready_receiver) = mpsc::channel::<Result<(u32, usize), String>>();
+    let samples = Arc::new(Mutex::new(Vec::<f32>::new()));
+    let thread_samples = Arc::clone(&samples);
+
+    let thread = thread::spawn(move || {
+        run_native_audio_capture(stop_receiver, ready_sender, thread_samples)
+    });
+
+    let (source_sample_rate, channels) = ready_receiver
+        .recv()
+        .map_err(|error| format!("capture_stream_start_failed:{error}"))??;
+
+    Ok(NativeAudioRecorder {
+        path,
+        samples,
+        source_sample_rate,
+        channels,
+        stop_sender,
+        thread,
+    })
+}
+
+#[cfg(not(test))]
+fn run_native_audio_capture(
+    stop_receiver: mpsc::Receiver<()>,
+    ready_sender: mpsc::Sender<Result<(u32, usize), String>>,
+    samples: Arc<Mutex<Vec<f32>>>,
+) -> Result<(), String> {
+    let host = cpal::default_host();
+    let device = match host.default_input_device() {
+        Some(device) => device,
+        None => {
+            let message = "capture_input_device_unavailable".to_string();
+            let _ = ready_sender.send(Err(message.clone()));
+            return Err(message);
+        }
+    };
+    let supported_config = match device.default_input_config() {
+        Ok(config) => config,
+        Err(error) => {
+            let message = format!("capture_input_config_unavailable:{error}");
+            let _ = ready_sender.send(Err(message.clone()));
+            return Err(message);
+        }
+    };
+    let sample_format = supported_config.sample_format();
+    let stream_config = supported_config.config();
+    let channels = usize::from(stream_config.channels);
+    let source_sample_rate = stream_config.sample_rate.0;
+
+    let stream = match sample_format {
+        cpal::SampleFormat::F32 => {
+            let callback_samples = Arc::clone(&samples);
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[f32], _| append_f32_samples(data, &callback_samples),
+                native_audio_error_callback,
+                None,
+            )
+        }
+        cpal::SampleFormat::I16 => {
+            let callback_samples = Arc::clone(&samples);
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[i16], _| append_i16_samples(data, &callback_samples),
+                native_audio_error_callback,
+                None,
+            )
+        }
+        cpal::SampleFormat::U16 => {
+            let callback_samples = Arc::clone(&samples);
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[u16], _| append_u16_samples(data, &callback_samples),
+                native_audio_error_callback,
+                None,
+            )
+        }
+        unsupported => {
+            let message = format!("capture_input_sample_format_unsupported:{unsupported:?}");
+            let _ = ready_sender.send(Err(message.clone()));
+            return Err(message);
+        }
+    };
+    let stream = match stream {
+        Ok(stream) => stream,
+        Err(error) => {
+            let message = format!("capture_stream_unavailable:{error}");
+            let _ = ready_sender.send(Err(message.clone()));
+            return Err(message);
+        }
+    };
+
+    if let Err(error) = stream.play() {
+        let message = format!("capture_stream_start_failed:{error}");
+        let _ = ready_sender.send(Err(message.clone()));
+        return Err(message);
+    }
+
+    let _ = ready_sender.send(Ok((source_sample_rate, channels)));
+    let _ = stop_receiver.recv();
+
+    Ok(())
+}
+
+#[cfg(not(test))]
+fn native_audio_error_callback(error: cpal::StreamError) {
+    eprintln!("honey native audio capture error: {error}");
+}
+
+#[cfg(not(test))]
+fn append_f32_samples(input: &[f32], samples: &Arc<Mutex<Vec<f32>>>) {
+    if let Ok(mut output) = samples.lock() {
+        output.extend(input.iter().map(|sample| sample.clamp(-1.0, 1.0)));
+    }
+}
+
+#[cfg(not(test))]
+fn append_i16_samples(input: &[i16], samples: &Arc<Mutex<Vec<f32>>>) {
+    if let Ok(mut output) = samples.lock() {
+        output.extend(
+            input
+                .iter()
+                .map(|sample| f32::from(*sample) / f32::from(i16::MAX)),
+        );
+    }
+}
+
+#[cfg(not(test))]
+fn append_u16_samples(input: &[u16], samples: &Arc<Mutex<Vec<f32>>>) {
+    if let Ok(mut output) = samples.lock() {
+        output.extend(
+            input
+                .iter()
+                .map(|sample| (f32::from(*sample) - 32768.0) / 32768.0),
+        );
+    }
+}
+
+fn finish_native_audio_recorder(recorder: NativeAudioRecorder) -> Result<(), String> {
+    let NativeAudioRecorder {
+        path,
+        samples,
+        source_sample_rate,
+        channels,
+        #[cfg(not(test))]
+        stop_sender,
+        #[cfg(not(test))]
+        thread,
+    } = recorder;
+    #[cfg(not(test))]
+    {
+        let _ = stop_sender.send(());
+        thread
+            .join()
+            .map_err(|_| "capture_thread_join_failed".to_string())??;
+    }
+
+    let samples = samples
+        .lock()
+        .map_err(|_| "capture_samples_unavailable".to_string())?
+        .clone();
+    let pcm_samples = convert_to_mono_pcm16(
+        &samples,
+        source_sample_rate,
+        channels,
+        HOLD_TO_TALK_SAMPLE_RATE,
+    )?;
+
+    write_pcm16_wav_file(&path, &pcm_samples, HOLD_TO_TALK_SAMPLE_RATE)
+}
+
+fn discard_native_audio_recorder(recorder: NativeAudioRecorder) {
+    #[cfg(not(test))]
+    {
+        let NativeAudioRecorder {
+            stop_sender,
+            thread,
+            ..
+        } = recorder;
+        let _ = stop_sender.send(());
+        let _ = thread.join();
+    }
+
+    #[cfg(test)]
+    {
+        let _ = recorder;
+    }
+}
+
+fn convert_to_mono_pcm16(
+    samples: &[f32],
+    source_sample_rate: u32,
+    channels: usize,
+    target_sample_rate: u32,
+) -> Result<Vec<i16>, String> {
+    if source_sample_rate == 0 || target_sample_rate == 0 || channels == 0 {
+        return Err("capture_audio_format_invalid".to_string());
+    }
+
+    let source_frame_count = samples.len() / channels;
+    if source_frame_count == 0 {
+        return Err("capture_audio_empty".to_string());
+    }
+
+    let target_frame_count = ((source_frame_count as u64 * u64::from(target_sample_rate))
+        / u64::from(source_sample_rate))
+    .max(1) as usize;
+    let mut pcm_samples = Vec::with_capacity(target_frame_count);
+    for target_frame in 0..target_frame_count {
+        let source_frame = ((target_frame as u64 * u64::from(source_sample_rate))
+            / u64::from(target_sample_rate))
+        .min(source_frame_count.saturating_sub(1) as u64) as usize;
+        let frame_offset = source_frame * channels;
+        let mono_sample = samples[frame_offset..frame_offset + channels]
+            .iter()
+            .copied()
+            .sum::<f32>()
+            / channels as f32;
+        pcm_samples.push(float_sample_to_i16(mono_sample));
+    }
+
+    Ok(pcm_samples)
+}
+
+fn float_sample_to_i16(sample: f32) -> i16 {
+    let clamped = sample.clamp(-1.0, 1.0);
+    if clamped >= 0.0 {
+        (clamped * f32::from(i16::MAX)).round() as i16
+    } else {
+        (clamped * 32768.0).round() as i16
+    }
+}
+
+fn write_pcm16_wav_file(path: &Path, samples: &[i16], sample_rate: u32) -> Result<(), String> {
     let channels = 1u16;
     let bits_per_sample = 16u16;
-    let data_size = 0u32;
+    let data_size: u32 = (samples.len() * std::mem::size_of::<i16>())
+        .try_into()
+        .map_err(|_| "capture_audio_too_large".to_string())?;
     let byte_rate = sample_rate * u32::from(channels) * u32::from(bits_per_sample) / 8;
     let block_align = channels * bits_per_sample / 8;
-    let mut header = Vec::with_capacity(44);
+    let mut wav_bytes = Vec::with_capacity(44 + data_size as usize);
 
-    header.extend_from_slice(b"RIFF");
-    header.extend_from_slice(&(36 + data_size).to_le_bytes());
-    header.extend_from_slice(b"WAVE");
-    header.extend_from_slice(b"fmt ");
-    header.extend_from_slice(&16u32.to_le_bytes());
-    header.extend_from_slice(&1u16.to_le_bytes());
-    header.extend_from_slice(&channels.to_le_bytes());
-    header.extend_from_slice(&sample_rate.to_le_bytes());
-    header.extend_from_slice(&byte_rate.to_le_bytes());
-    header.extend_from_slice(&block_align.to_le_bytes());
-    header.extend_from_slice(&bits_per_sample.to_le_bytes());
-    header.extend_from_slice(b"data");
-    header.extend_from_slice(&data_size.to_le_bytes());
+    wav_bytes.extend_from_slice(b"RIFF");
+    wav_bytes.extend_from_slice(&(36u32 + data_size).to_le_bytes());
+    wav_bytes.extend_from_slice(b"WAVE");
+    wav_bytes.extend_from_slice(b"fmt ");
+    wav_bytes.extend_from_slice(&16u32.to_le_bytes());
+    wav_bytes.extend_from_slice(&1u16.to_le_bytes());
+    wav_bytes.extend_from_slice(&channels.to_le_bytes());
+    wav_bytes.extend_from_slice(&sample_rate.to_le_bytes());
+    wav_bytes.extend_from_slice(&byte_rate.to_le_bytes());
+    wav_bytes.extend_from_slice(&block_align.to_le_bytes());
+    wav_bytes.extend_from_slice(&bits_per_sample.to_le_bytes());
+    wav_bytes.extend_from_slice(b"data");
+    wav_bytes.extend_from_slice(&data_size.to_le_bytes());
+    for sample in samples {
+        wav_bytes.extend_from_slice(&sample.to_le_bytes());
+    }
 
-    std::fs::write(path, header).map_err(|error| format!("capture_file_unavailable:{error}"))
+    std::fs::write(path, wav_bytes).map_err(|error| format!("capture_file_unavailable:{error}"))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -466,13 +746,7 @@ fn honey_start_backend_process() -> serde_json::Value {
     if is_backend_endpoint_available(&config) {
         state.external_running = true;
         state.detail = Some("backend_already_running".to_string());
-        return backend_process_status_json(
-            "running",
-            &config,
-            false,
-            None,
-            state.detail.clone(),
-        );
+        return backend_process_status_json("running", &config, false, None, state.detail.clone());
     }
 
     match Command::new(&config.executable)
@@ -527,13 +801,7 @@ fn honey_stop_backend_process() -> serde_json::Value {
 
     if state.external_running && is_backend_endpoint_available(&config) {
         state.detail = Some("backend_process_not_managed".to_string());
-        return backend_process_status_json(
-            "running",
-            &config,
-            false,
-            None,
-            state.detail.clone(),
-        );
+        return backend_process_status_json("running", &config, false, None, state.detail.clone());
     }
 
     state.external_running = false;
@@ -617,7 +885,9 @@ fn honey_register_hold_to_talk_hotkey(
 }
 
 #[tauri::command]
-fn honey_unregister_hold_to_talk_hotkey(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+fn honey_unregister_hold_to_talk_hotkey(
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
     let mut registered_hotkey = registered_hold_to_talk_hotkey()
         .lock()
         .expect("registered hold-to-talk hotkey lock poisoned");
@@ -638,16 +908,34 @@ fn honey_unregister_hold_to_talk_hotkey(app: tauri::AppHandle) -> Result<serde_j
 
 #[tauri::command]
 fn honey_start_hold_to_talk_capture(hotkey: String) -> Result<serde_json::Value, String> {
-    if hotkey.trim().is_empty() {
+    let normalized_hotkey = hotkey.trim().to_string();
+    if normalized_hotkey.is_empty() {
         return Err("invalid_hotkey".to_string());
     }
+
+    let previous_recorder = {
+        let mut capture = hold_to_talk_capture()
+            .lock()
+            .expect("hold-to-talk capture lock poisoned");
+        capture.state = "cancelled".to_string();
+        capture.audio_path = None;
+        capture.recorder.take()
+    };
+    if let Some(recorder) = previous_recorder {
+        discard_native_audio_recorder(recorder);
+    }
+
+    let audio_path = create_hold_to_talk_audio_path()?;
+    let audio_path_text = audio_path.to_string_lossy().into_owned();
+    let recorder = start_native_audio_recorder(audio_path)?;
 
     let mut capture = hold_to_talk_capture()
         .lock()
         .expect("hold-to-talk capture lock poisoned");
     capture.state = "listening".to_string();
-    capture.hotkey = hotkey;
-    capture.audio_path = Some(create_hold_to_talk_audio_file()?);
+    capture.hotkey = normalized_hotkey;
+    capture.audio_path = Some(audio_path_text);
+    capture.recorder = Some(recorder);
 
     Ok(hold_to_talk_capture_json(&capture))
 }
@@ -661,6 +949,11 @@ fn honey_finish_hold_to_talk_capture() -> Result<serde_json::Value, String> {
         return Err("not_listening".to_string());
     }
 
+    let recorder = capture
+        .recorder
+        .take()
+        .ok_or_else(|| "capture_recorder_unavailable".to_string())?;
+    finish_native_audio_recorder(recorder)?;
     capture.state = "captured".to_string();
 
     Ok(hold_to_talk_capture_json(&capture))
@@ -671,6 +964,10 @@ fn honey_cancel_hold_to_talk_capture() -> Result<serde_json::Value, String> {
     let mut capture = hold_to_talk_capture()
         .lock()
         .expect("hold-to-talk capture lock poisoned");
+    if let Some(recorder) = capture.recorder.take() {
+        discard_native_audio_recorder(recorder);
+    }
+
     capture.state = "cancelled".to_string();
     capture.audio_path = None;
 
@@ -707,7 +1004,10 @@ fn validate_text_insertion_input(text: &str, method: &str) -> Result<(), String>
     Ok(())
 }
 
-fn windows_text_insertion_script(method: &str, restore_clipboard: bool) -> Result<&'static str, String> {
+fn windows_text_insertion_script(
+    method: &str,
+    restore_clipboard: bool,
+) -> Result<&'static str, String> {
     match (method, restore_clipboard) {
         ("paste", true) => Ok(
             "Add-Type -AssemblyName System.Windows.Forms; $hadText = [System.Windows.Forms.Clipboard]::ContainsText(); $previousClipboardText = if ($hadText) { [System.Windows.Forms.Clipboard]::GetText() } else { $null }; [System.Windows.Forms.Clipboard]::SetText($args[0]); Start-Sleep -Milliseconds 50; [System.Windows.Forms.SendKeys]::SendWait('^v'); Start-Sleep -Milliseconds 50; if ($hadText) { [System.Windows.Forms.Clipboard]::SetText($previousClipboardText) } else { [System.Windows.Forms.Clipboard]::Clear() }",
@@ -722,7 +1022,11 @@ fn windows_text_insertion_script(method: &str, restore_clipboard: bool) -> Resul
     }
 }
 
-fn run_windows_text_insertion(text: &str, method: &str, restore_clipboard: bool) -> Result<(), String> {
+fn run_windows_text_insertion(
+    text: &str,
+    method: &str,
+    restore_clipboard: bool,
+) -> Result<(), String> {
     let script = windows_text_insertion_script(method, restore_clipboard)?;
 
     let status = Command::new("powershell.exe")
@@ -789,16 +1093,30 @@ mod tests {
             .expect("capture start should be valid");
 
         assert_eq!(started["state"], "listening");
-        assert!(started["audioPath"].as_str().unwrap().ends_with(".wav"));
+        let audio_path = started["audioPath"].as_str().unwrap();
+        assert!(audio_path.ends_with(".wav"));
 
-        let captured = honey_finish_hold_to_talk_capture()
-            .expect("capture finish should be valid");
+        let captured = honey_finish_hold_to_talk_capture().expect("capture finish should be valid");
 
         assert_eq!(captured["state"], "captured");
         assert_eq!(captured["audioPath"], started["audioPath"]);
+        let wav_bytes = std::fs::read(audio_path).expect("captured audio file should be readable");
+        assert_eq!(&wav_bytes[0..4], b"RIFF");
+        assert_eq!(&wav_bytes[8..12], b"WAVE");
+        assert_eq!(u16::from_le_bytes([wav_bytes[20], wav_bytes[21]]), 1);
+        assert_eq!(u16::from_le_bytes([wav_bytes[22], wav_bytes[23]]), 1);
+        assert_eq!(
+            u32::from_le_bytes([wav_bytes[24], wav_bytes[25], wav_bytes[26], wav_bytes[27]]),
+            16_000,
+        );
+        assert_eq!(u16::from_le_bytes([wav_bytes[34], wav_bytes[35]]), 16);
+        assert!(
+            u32::from_le_bytes([wav_bytes[40], wav_bytes[41], wav_bytes[42], wav_bytes[43]]) > 0,
+            "captured WAV should contain PCM samples",
+        );
 
-        let cancelled = honey_cancel_hold_to_talk_capture()
-            .expect("capture cancel should be valid");
+        let cancelled =
+            honey_cancel_hold_to_talk_capture().expect("capture cancel should be valid");
 
         assert_eq!(cancelled["state"], "cancelled");
         assert_eq!(cancelled.get("audioPath"), None);
@@ -868,20 +1186,28 @@ mod tests {
         .expect("backend process config should be valid");
 
         assert_eq!(config.executable, "node.exe");
-        assert_eq!(config.args, vec!["backend/dist/index.js", "--port", "33578"]);
+        assert_eq!(
+            config.args,
+            vec!["backend/dist/index.js", "--port", "33578"]
+        );
         assert_eq!(config.cwd, "D:\\products\\voice-to-text");
         assert_eq!(config.base_url(), "http://127.0.0.1:33578");
     }
 
     #[test]
     fn backend_process_config_prefers_bundled_sidecar() {
-        let sidecar_path = "D:\\products\\voice-to-text\\src-tauri\\target\\release\\honey-backend.exe";
-        let config = resolve_backend_process_config_with_sidecar(&[], "D:\\fallback", Some(sidecar_path))
-            .expect("backend process config should prefer bundled sidecar");
+        let sidecar_path =
+            "D:\\products\\voice-to-text\\src-tauri\\target\\release\\honey-backend.exe";
+        let config =
+            resolve_backend_process_config_with_sidecar(&[], "D:\\fallback", Some(sidecar_path))
+                .expect("backend process config should prefer bundled sidecar");
 
         assert_eq!(config.executable, sidecar_path);
         assert_eq!(config.args, Vec::<String>::new());
-        assert_eq!(config.cwd, "D:\\products\\voice-to-text\\src-tauri\\target\\release");
+        assert_eq!(
+            config.cwd,
+            "D:\\products\\voice-to-text\\src-tauri\\target\\release"
+        );
         assert_eq!(config.base_url(), "http://127.0.0.1:33577");
     }
 }
