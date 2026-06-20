@@ -26,6 +26,7 @@ export default function App() {
     hotkey,
     asrModelStatus,
     overlayEnabled,
+    overlayPosition,
     overlaySnapshot,
     forcePasteApps,
     outputMethod,
@@ -33,6 +34,7 @@ export default function App() {
     setCurrentMode,
     setHotkey,
     setOverlayEnabled,
+    setOverlayPosition,
     setOutputRuntimeSettings,
   } = useDictationUiStore();
   const handleSessionCompleted = useCallback((record: { outputText: string }) => {
@@ -60,6 +62,7 @@ export default function App() {
         setHotkey(settings.hotkey);
         setCurrentMode(settings.personaModeEnabled ? settings.defaultMode : 'direct');
         setOverlayEnabled(settings.overlayEnabled);
+        setOverlayPosition(settings.overlayPosition);
         setWindowMode(settings.defaultWindowMode);
         setOutputRuntimeSettings({
           outputMethod: settings.outputMethod,
@@ -72,7 +75,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [setCurrentMode, setHotkey, setOverlayEnabled, setOutputRuntimeSettings, setWindowMode]);
+  }, [setCurrentMode, setHotkey, setOverlayEnabled, setOverlayPosition, setOutputRuntimeSettings, setWindowMode]);
 
   const page = useMemo(() => {
     switch (activeRoute) {
@@ -114,7 +117,7 @@ export default function App() {
       <AppShell activeRoute={activeRoute} onRouteChange={setActiveRoute} onOpenMini={() => setWindowMode('mini')}>
         {page}
       </AppShell>
-      {overlayEnabled ? <DictationOverlay snapshot={overlaySnapshot} /> : null}
+      {overlayEnabled ? <DictationOverlay position={overlayPosition} snapshot={overlaySnapshot} /> : null}
     </>
   );
 }

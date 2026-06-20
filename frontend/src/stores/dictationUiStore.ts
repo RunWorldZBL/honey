@@ -17,6 +17,7 @@ interface DictationUiStore {
   forcePasteApps: string[];
   asrModelStatus: ModelStatus;
   overlayEnabled: boolean;
+  overlayPosition: AppSettings['overlayPosition'];
   overlaySnapshot: DictationOverlaySnapshot;
   setWindowMode: (mode: AppWindowMode) => void;
   setCurrentMode: (mode: DictationMode) => void;
@@ -28,6 +29,7 @@ interface DictationUiStore {
     forcePasteApps: string[];
   }) => void;
   setOverlayEnabled: (enabled: boolean) => void;
+  setOverlayPosition: (position: AppSettings['overlayPosition']) => void;
   setOverlaySnapshot: (snapshot: DictationOverlaySnapshot) => void;
 }
 
@@ -41,6 +43,7 @@ export const useDictationUiStore = create<DictationUiStore>((set) => ({
   forcePasteApps: [],
   asrModelStatus: 'installed',
   overlayEnabled: true,
+  overlayPosition: 'bottom-center',
   overlaySnapshot: { state: 'idle', mode: 'direct', volumeLevel: 0 },
   setWindowMode: (windowMode) => set({ windowMode }),
   setCurrentMode: (currentMode) => set({ currentMode }),
@@ -52,5 +55,6 @@ export const useDictationUiStore = create<DictationUiStore>((set) => ({
     forcePasteApps,
   }),
   setOverlayEnabled: (overlayEnabled) => set({ overlayEnabled }),
+  setOverlayPosition: (overlayPosition) => set({ overlayPosition }),
   setOverlaySnapshot: (overlaySnapshot) => set({ overlaySnapshot }),
 }));

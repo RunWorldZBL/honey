@@ -581,7 +581,6 @@ select:focus {
 
 .dictation-overlay {
   position: fixed;
-  left: 50%;
   bottom: 42px;
   z-index: 20;
   display: grid;
@@ -594,8 +593,20 @@ select:focus {
   background: color-mix(in oklch, var(--card) 92%, transparent);
   box-shadow: var(--shadow);
   padding: 12px 14px;
-  transform: translateX(-50%);
   backdrop-filter: blur(12px);
+}
+
+.dictation-overlay--bottom-center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dictation-overlay--bottom-left {
+  left: 24px;
+}
+
+.dictation-overlay--bottom-right {
+  right: 24px;
 }
 
 .overlay-preview__stage .dictation-overlay {

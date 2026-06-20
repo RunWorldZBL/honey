@@ -18,6 +18,7 @@ export function SettingsPage() {
   const setCurrentMode = useDictationUiStore(state => state.setCurrentMode);
   const setHotkey = useDictationUiStore(state => state.setHotkey);
   const setOverlayEnabled = useDictationUiStore(state => state.setOverlayEnabled);
+  const setOverlayPosition = useDictationUiStore(state => state.setOverlayPosition);
   const setOutputRuntimeSettings = useDictationUiStore(state => state.setOutputRuntimeSettings);
   const setWindowMode = useDictationUiStore(state => state.setWindowMode);
   const [settings, setSettings] = useState<AppSettings>();
@@ -55,6 +56,7 @@ export function SettingsPage() {
     setHotkey(savedSettings.hotkey);
     setCurrentMode(savedSettings.personaModeEnabled ? savedSettings.defaultMode : 'direct');
     setOverlayEnabled(savedSettings.overlayEnabled);
+    setOverlayPosition(savedSettings.overlayPosition);
     setOutputRuntimeSettings({
       outputMethod: savedSettings.outputMethod,
       restoreClipboard: savedSettings.restoreClipboard,

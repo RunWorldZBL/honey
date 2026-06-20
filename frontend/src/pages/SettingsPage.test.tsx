@@ -176,6 +176,19 @@ describe('SettingsPage', () => {
     });
   });
 
+  it('syncs saved overlay position to the dictation runtime state', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await screen.findByDisplayValue('F9');
+    await user.selectOptions(screen.getByLabelText('浮层位置'), 'bottom-left');
+    await user.click(screen.getByRole('button', { name: '保存设置' }));
+
+    expect(useDictationUiStore.getState()).toMatchObject({
+      overlayPosition: 'bottom-left',
+    });
+  });
+
   it('applies desktop window mode immediately through the desktop shell', async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);

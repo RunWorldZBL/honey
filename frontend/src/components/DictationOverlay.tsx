@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, Loader2, Mic2 } from 'lucide-react';
-import type { DictationOverlaySnapshot } from '@honey/api-contracts';
+import type { AppSettings, DictationOverlaySnapshot } from '@honey/api-contracts';
 
 import { mockWaveform } from '@/data/mockData';
 
@@ -32,7 +32,13 @@ const iconForState = (state: DictationOverlaySnapshot['state']) => {
   return <Mic2 size={18} />;
 };
 
-export function DictationOverlay({ snapshot }: { snapshot: DictationOverlaySnapshot }) {
+export function DictationOverlay({
+  snapshot,
+  position = 'bottom-center',
+}: {
+  snapshot: DictationOverlaySnapshot;
+  position?: AppSettings['overlayPosition'];
+}) {
   if (snapshot.state === 'idle') {
     return null;
   }
@@ -40,7 +46,11 @@ export function DictationOverlay({ snapshot }: { snapshot: DictationOverlaySnaps
   const waveformActive = snapshot.state === 'listening' && snapshot.volumeLevel > 0.05;
 
   return (
-    <div className={`dictation-overlay dictation-overlay--${snapshot.state}`} role="status" aria-live="polite">
+    <div
+      className={`dictation-overlay dictation-overlay--${position} dictation-overlay--${snapshot.state}`}
+      role="status"
+      aria-live="polite"
+    >
       <div className="dictation-overlay__status">
         {iconForState(snapshot.state)}
         <span>{statusText[snapshot.state]}</span>

@@ -15,6 +15,17 @@ describe('DictationOverlay', () => {
     expect(screen.getByTestId('dictation-waveform')).toHaveAttribute('data-active', 'true');
   });
 
+  it('applies the configured screen position', () => {
+    render(
+      <DictationOverlay
+        position="bottom-right"
+        snapshot={{ state: 'listening', mode: 'direct', volumeLevel: 0.8 }}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveClass('dictation-overlay--bottom-right');
+  });
+
   it('scales waveform height with the captured volume level', () => {
     const { container, rerender } = render(
       <DictationOverlay

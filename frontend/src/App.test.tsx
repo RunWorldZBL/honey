@@ -169,4 +169,19 @@ describe('App', () => {
       expect(screen.queryByTestId('dictation-overlay')).not.toBeInTheDocument();
     });
   });
+
+  it('passes the configured overlay position to the dictation overlay', async () => {
+    getSettings.mockResolvedValueOnce({
+      ...appSettings,
+      overlayPosition: 'bottom-right',
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(dictationOverlay).toHaveBeenLastCalledWith(expect.objectContaining({
+        position: 'bottom-right',
+      }));
+    });
+  });
 });
