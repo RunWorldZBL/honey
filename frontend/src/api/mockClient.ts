@@ -2,6 +2,8 @@ import type {
   AppSettings,
   AudioCaptureUploadInput,
   AudioCaptureUploadResult,
+  CreateFileTranscriptionTaskInput,
+  FileTranscriptionTask,
   DictationSessionInput,
   HotwordEntry,
   LocalLlmRuntimeStatus,
@@ -51,6 +53,7 @@ export function createMockBackendClient(): BackendClient {
   let rules: ReplaceRule[] = clone(mockRules);
   let personas: PersonaProfile[] = clone(mockPersonas);
   let settings: AppSettings = clone(mockSettings);
+  let fileTasks: FileTranscriptionTask[] = clone(mockFileTasks);
   let llmRuntime: LocalLlmRuntimeStatus = { status: 'stopped' };
 
   return {
@@ -70,7 +73,23 @@ export function createMockBackendClient(): BackendClient {
       return clone(mockModels);
     },
     async listFileTranscriptionTasks() {
-      return clone(mockFileTasks);
+      return clone(fileTasks);
+    },
+    async createFileTranscriptionTask(input: CreateFileTranscriptionTaskInput) {
+      const normalizedPath = input.filePath.replace(/\\/g, '/');
+      const fileName = input.fileName ?? normalizedPath.split('/').filter(Boolean).at(-1) ?? input.filePath;
+      const task: FileTranscriptionTask = {
+        id: `mock-file-${Date.now()}`,
+        fileName,
+        sourcePath: input.filePath,
+        status: 'completed',
+        progress: 100,
+        outputFormats: [...input.outputFormats],
+        transcriptText: '客户说明天继续推进。',
+      };
+      fileTasks = [task, ...fileTasks];
+
+      return clone(task);
     },
     async listTrayActions() {
       return clone(mockTrayActions);

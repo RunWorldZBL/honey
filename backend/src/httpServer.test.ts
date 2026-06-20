@@ -360,6 +360,38 @@ async function testHoneyHttpServer() {
     assertEqual(fileTasks[0]?.status, 'processing', 'file tasks endpoint should expose task status');
     assertEqual(fileTasks[0]?.outputFormats.includes('txt'), true, 'file tasks endpoint should expose output formats');
 
+    const createdFileTask = await readJson<{
+      fileName: string;
+      sourcePath?: string;
+      status: string;
+      progress: number;
+      outputFormats: string[];
+      transcriptText?: string;
+    }>(await fetch(`${baseUrl}/api/file-tasks`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        filePath: 'D:/recordings/客户访谈.mp3',
+        outputFormats: ['txt', 'json'],
+      }),
+    }));
+    assertEqual(createdFileTask.fileName, '客户访谈.mp3', 'file tasks endpoint should derive file name from local path');
+    assertEqual(createdFileTask.sourcePath, 'D:/recordings/客户访谈.mp3', 'file tasks endpoint should keep source path');
+    assertEqual(createdFileTask.status, 'completed', 'file tasks endpoint should run ASR and complete the task');
+    assertEqual(createdFileTask.progress, 100, 'file tasks endpoint should report completed progress');
+    assertEqual(createdFileTask.outputFormats.join(','), 'txt,json', 'file tasks endpoint should keep requested output formats');
+    assertOk(createdFileTask.transcriptText, 'file tasks endpoint should expose transcript text');
+
+    const invalidFileTask = await fetch(`${baseUrl}/api/file-tasks`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        filePath: '',
+        outputFormats: [],
+      }),
+    });
+    assertEqual(invalidFileTask.status, 400, 'file tasks endpoint should reject invalid create payloads');
+
     const trayActions = await readJson<Array<{
       id: string;
       enabled: boolean;

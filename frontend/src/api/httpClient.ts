@@ -2,6 +2,7 @@ import type {
   AppSettings,
   AudioCaptureUploadInput,
   AudioCaptureUploadResult,
+  CreateFileTranscriptionTaskInput,
   DictationSessionInput,
   DictationSessionResult,
   FileTranscriptionTask,
@@ -87,6 +88,8 @@ export function createHttpBackendClient(baseUrl = defaultBaseUrl): BackendClient
       () => requestJson<FileTranscriptionTask[]>(baseUrl, '/api/file-tasks'),
       () => fallback.listFileTranscriptionTasks(),
     ),
+    createFileTranscriptionTask: (input: CreateFileTranscriptionTaskInput) =>
+      requestJson<FileTranscriptionTask>(baseUrl, '/api/file-tasks', jsonRequest('POST', input)),
     listTrayActions: () => withReadFallback(
       () => requestJson<TrayAction[]>(baseUrl, '/api/tray-actions'),
       () => fallback.listTrayActions(),

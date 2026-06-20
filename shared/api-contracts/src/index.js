@@ -186,8 +186,19 @@ export const FileTranscriptionTaskSchema = z.object({
   status: z.enum(['waiting', 'processing', 'completed', 'failed']),
   progress: z.number().min(0).max(100),
   outputFormats: z.array(z.enum(['srt', 'txt', 'json', 'merged-txt'])),
+  sourcePath: z.string().optional(),
+  transcriptText: z.string().optional(),
   resultPath: z.string().optional(),
   errorMessage: z.string().optional(),
+});
+
+export const FileTranscriptionOutputFormatSchema = z.enum(['srt', 'txt', 'json', 'merged-txt']);
+
+export const CreateFileTranscriptionTaskInputSchema = z.object({
+  filePath: z.string().min(1),
+  fileName: z.string().min(1).optional(),
+  outputFormats: z.array(FileTranscriptionOutputFormatSchema).min(1),
+  asrModelId: z.string().optional(),
 });
 
 export const TrayActionSchema = z.object({

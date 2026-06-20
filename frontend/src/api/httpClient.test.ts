@@ -143,11 +143,24 @@ describe('httpClient', () => {
     }));
   });
 
-  it('loads file tasks and tray actions from the local backend HTTP API', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+  it('loads and creates file tasks through the local backend HTTP API', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
       const path = String(url).replace('http://127.0.0.1:33577', '');
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
 
       if (path === '/api/file-tasks') {
+        if (init?.method === 'POST') {
+          return new Response(JSON.stringify({
+            id: 'task-created',
+            fileName: body.fileName,
+            sourcePath: body.filePath,
+            status: 'completed',
+            progress: 100,
+            outputFormats: body.outputFormats,
+            transcriptText: 'HTTP 文件转录结果',
+          }));
+        }
+
         return new Response(JSON.stringify([
           {
             id: 'task-http',
@@ -177,10 +190,47 @@ describe('httpClient', () => {
     await expect(client.listFileTranscriptionTasks()).resolves.toMatchObject([
       { id: 'task-http', fileName: 'HTTP 录音.wav' },
     ]);
+    await expect(client.createFileTranscriptionTask({
+      filePath: 'D:/recordings/客户访谈.mp3',
+      fileName: '客户访谈.mp3',
+      outputFormats: ['txt', 'json'],
+    })).resolves.toMatchObject({
+      id: 'task-created',
+      sourcePath: 'D:/recordings/客户访谈.mp3',
+      transcriptText: 'HTTP 文件转录结果',
+    });
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:33577/api/file-tasks', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        filePath: 'D:/recordings/客户访谈.mp3',
+        fileName: '客户访谈.mp3',
+        outputFormats: ['txt', 'json'],
+      }),
+    }));
+  });
+
+  it('loads tray actions from the local backend HTTP API', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const path = String(url).replace('http://127.0.0.1:33577', '');
+
+      if (path === '/api/tray-actions') {
+        return new Response(JSON.stringify([
+          {
+            id: 'tray-http',
+            label: 'HTTP 托盘动作',
+            description: '来自 HTTP 后端',
+            enabled: true,
+          },
+        ]));
+      }
+
+      return new Response(JSON.stringify({ error: 'not_found' }), { status: 404 });
+    });
+    const client = createHttpBackendClient('http://127.0.0.1:33577');
+
     await expect(client.listTrayActions()).resolves.toMatchObject([
       { id: 'tray-http', label: 'HTTP 托盘动作' },
     ]);
-    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:33577/api/file-tasks', undefined);
     expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:33577/api/tray-actions', undefined);
   });
 

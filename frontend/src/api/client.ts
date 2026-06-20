@@ -2,6 +2,7 @@ import type {
   AppSettings,
   AudioCaptureUploadInput,
   AudioCaptureUploadResult,
+  CreateFileTranscriptionTaskInput,
   DictationSessionInput,
   DictationSessionResult,
   FileTranscriptionTask,
@@ -27,6 +28,7 @@ export interface BackendClient {
   listPersonas(): Promise<PersonaProfile[]>;
   listModels(): Promise<ModelProfile[]>;
   listFileTranscriptionTasks(): Promise<FileTranscriptionTask[]>;
+  createFileTranscriptionTask(input: CreateFileTranscriptionTaskInput): Promise<FileTranscriptionTask>;
   listTrayActions(): Promise<TrayAction[]>;
   getRuntimeHealth(): Promise<RuntimeHealth>;
   getLocalLlmRuntimeStatus(): Promise<LocalLlmRuntimeStatus>;

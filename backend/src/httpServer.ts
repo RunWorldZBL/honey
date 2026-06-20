@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import {
   AudioCaptureUploadInputSchema,
+  CreateFileTranscriptionTaskInputSchema,
   DictationSessionInputSchema,
   HotwordEntrySchema,
   PersonaDictationSessionInputSchema,
@@ -140,6 +141,15 @@ const createRoutes = (service: HoneyService): Record<string, RouteHandler> => ({
   },
   'GET /api/file-tasks': async (request, response) => {
     sendJson(request, response, 200, await service.listFileTranscriptionTasks());
+  },
+  'POST /api/file-tasks': async (request, response) => {
+    const body = CreateFileTranscriptionTaskInputSchema.safeParse(await readJsonBody<unknown>(request));
+    if (!body.success) {
+      sendJson(request, response, 400, { error: 'invalid_request' });
+      return;
+    }
+
+    sendJson(request, response, 200, await service.createFileTranscriptionTask(body.data));
   },
   'GET /api/tray-actions': async (request, response) => {
     sendJson(request, response, 200, await service.listTrayActions());

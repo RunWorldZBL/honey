@@ -508,6 +508,38 @@ async function testFileTranscriptionTasksAndTrayActions() {
   assertEqual(trayActions.find(action => action.id === 'copy-latest')?.enabled, true, 'tray actions should expose enabled state');
 }
 
+async function testCreateFileTranscriptionTaskUsesAsrAdapter() {
+  const transcribeCalls: Array<{ audioPath: string; modelId: string }> = [];
+  const service = createHoneyService({
+    asrAdapter: {
+      transcribe: async (input) => {
+        transcribeCalls.push(input);
+        return {
+          text: '客户说明天继续推进。',
+          durationMs: 2300,
+        };
+      },
+    },
+  });
+
+  const task = await service.createFileTranscriptionTask({
+    filePath: 'D:/recordings/客户访谈.mp3',
+    outputFormats: ['txt', 'json'],
+    asrModelId: 'fun-asr-nano',
+  });
+  const tasks = await service.listFileTranscriptionTasks();
+
+  assertEqual(transcribeCalls[0]?.audioPath, 'D:/recordings/客户访谈.mp3', 'file transcription should pass MP3 paths to the ASR adapter');
+  assertEqual(transcribeCalls[0]?.modelId, 'fun-asr-nano', 'file transcription should pass the selected ASR model');
+  assertEqual(task.fileName, '客户访谈.mp3', 'file transcription should derive file name from the local path');
+  assertEqual(task.sourcePath, 'D:/recordings/客户访谈.mp3', 'file transcription should keep the source file path');
+  assertEqual(task.status, 'completed', 'file transcription should complete when ASR succeeds');
+  assertEqual(task.progress, 100, 'completed file transcription should report full progress');
+  assertEqual(task.transcriptText, '客户说明天继续推进。', 'file transcription should expose transcript text on the task');
+  assertEqual(task.outputFormats.join(','), 'txt,json', 'file transcription should keep requested output formats');
+  assertEqual(tasks[0]?.id, task.id, 'created file transcription tasks should be prepended to the queue');
+}
+
 async function testModelDiscoveryAndDictationSession() {
   const transcribeCalls: Array<{
     audioPath: string;
@@ -1023,6 +1055,7 @@ await testPersonaDictationSkipsArchiveWhenSaveHistoryIsDisabled();
 await testPersonaMutations();
 await testTranscriptAndPersonaMemory();
 await testFileTranscriptionTasksAndTrayActions();
+await testCreateFileTranscriptionTaskUsesAsrAdapter();
 await testModelDiscoveryAndDictationSession();
 await testHotwordBlacklistProtectsTermsInDictationOutput();
 await testRuntimeHealthReportsLocalDependencies();

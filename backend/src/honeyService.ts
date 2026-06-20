@@ -2,6 +2,7 @@ import type {
   AppSettings,
   AudioCaptureUploadInput,
   AudioCaptureUploadResult,
+  CreateFileTranscriptionTaskInput,
   DictationSessionInput,
   DictationSessionResult,
   FileTranscriptionTask,
@@ -21,7 +22,7 @@ import type {
 } from '@honey/api-contracts';
 import { randomUUID } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
-import { extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import {
   seedFileTranscriptionTasks,
@@ -256,6 +257,7 @@ export interface HoneyService {
   deletePersona(id: string): Promise<{ ok: true; id: string }>;
   listModels(): Promise<ModelProfile[]>;
   listFileTranscriptionTasks(): Promise<FileTranscriptionTask[]>;
+  createFileTranscriptionTask(input: CreateFileTranscriptionTaskInput): Promise<FileTranscriptionTask>;
   listTrayActions(): Promise<TrayAction[]>;
   clearPersonaMemory(personaId?: string): Promise<{ ok: true; personaId?: string }>;
   wasPersonaMemoryCleared(personaId: string): Promise<boolean>;
@@ -467,6 +469,51 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
     },
     async listFileTranscriptionTasks() {
       return clone(fileTranscriptionTasks);
+    },
+    async createFileTranscriptionTask(input) {
+      const fileName = input.fileName?.trim()
+        || basename(input.filePath.replace(/\\/g, '/'))
+        || input.filePath;
+      const baseTask = {
+        id: `file-${Date.now()}-${randomUUID()}`,
+        fileName,
+        sourcePath: input.filePath,
+        outputFormats: [...input.outputFormats],
+      };
+
+      try {
+        const transcription = await asrAdapter.transcribe({
+          audioPath: input.filePath,
+          modelId: input.asrModelId ?? 'fun-asr-nano',
+          modelRoot: getAsrModelRoot(),
+          language: settings.language === 'auto' ? undefined : settings.language,
+          hotwords: hotwords
+            .filter(hotword => hotword.enabled)
+            .map(hotword => ({
+              canonical: hotword.canonical,
+              aliases: [...hotword.aliases],
+            })),
+        });
+        const task: FileTranscriptionTask = {
+          ...baseTask,
+          status: 'completed',
+          progress: 100,
+          transcriptText: applyRules(applyHotwords(transcription.text, hotwords), rules),
+        };
+        fileTranscriptionTasks = [task, ...fileTranscriptionTasks];
+
+        return clone(task);
+      } catch (error) {
+        const task: FileTranscriptionTask = {
+          ...baseTask,
+          status: 'failed',
+          progress: 100,
+          errorMessage: error instanceof Error ? error.message : 'file_transcription_failed',
+        };
+        fileTranscriptionTasks = [task, ...fileTranscriptionTasks];
+
+        return clone(task);
+      }
     },
     async listTrayActions() {
       return clone(trayActions);
