@@ -20,6 +20,7 @@ use tauri::Emitter;
 #[cfg(not(test))]
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
@@ -886,6 +887,7 @@ pub fn run() {
             Some(vec!["--background".into()]),
         ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -911,6 +913,7 @@ pub fn run() {
             honey_set_desktop_window_mode,
             honey_set_tray_enabled,
             honey_set_startup_enabled,
+            honey_pick_audio_file,
             honey_register_hold_to_talk_hotkey,
             honey_unregister_hold_to_talk_hotkey,
             honey_start_hold_to_talk_capture,
@@ -1087,6 +1090,28 @@ fn honey_set_startup_enabled(
     }
 
     Ok(set_startup_enabled_state(enabled))
+}
+
+#[tauri::command]
+async fn honey_pick_audio_file(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let picked_file = app
+        .dialog()
+        .file()
+        .add_filter(
+            "音频和视频文件",
+            &["wav", "mp3", "m4a", "flac", "ogg", "webm", "mp4", "mov", "mkv"],
+        )
+        .blocking_pick_file();
+    let path = picked_file.and_then(|file_path| {
+        file_path
+            .as_path()
+            .map(|path| path.to_string_lossy().into_owned())
+    });
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "path": path
+    }))
 }
 
 #[tauri::command]

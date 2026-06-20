@@ -66,6 +66,7 @@ describe('desktopShell', () => {
       ok: true,
       enabled: true,
     });
+    await expect(client.pickAudioFile()).resolves.toBeUndefined();
     await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock' })).resolves.toMatchObject({
       ok: true,
       state: 'listening',
@@ -276,6 +277,10 @@ describe('desktopShell', () => {
         return { ok: true, enabled: (args as { enabled: boolean }).enabled };
       }
 
+      if (command === 'honey_pick_audio_file') {
+        return { ok: true, path: 'D:\\recordings\\客户访谈.mp3' };
+      }
+
       if (command === 'honey_start_hold_to_talk_capture') {
         return {
           ok: true,
@@ -357,6 +362,7 @@ describe('desktopShell', () => {
       ok: true,
       enabled: true,
     });
+    await expect(client.pickAudioFile()).resolves.toBe('D:\\recordings\\客户访谈.mp3');
     await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel: vi.fn() })).resolves.toMatchObject({
       state: 'listening',
       audioPath: captureAudioPath,
@@ -387,6 +393,7 @@ describe('desktopShell', () => {
     expect(invoke).toHaveBeenCalledWith('honey_set_desktop_window_mode', { mode: 'mini' });
     expect(invoke).toHaveBeenCalledWith('honey_set_tray_enabled', { enabled: false });
     expect(invoke).toHaveBeenCalledWith('honey_set_startup_enabled', { enabled: true });
+    expect(invoke).toHaveBeenCalledWith('honey_pick_audio_file');
     expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'CapsLock' });
     expect(invoke).toHaveBeenCalledWith('honey_finish_hold_to_talk_capture');
     expect(invoke).toHaveBeenCalledWith('honey_cancel_hold_to_talk_capture');
@@ -678,5 +685,16 @@ describe('desktopShell', () => {
       text: '坏响应',
       method: 'paste',
     })).rejects.toThrow('Invalid text insertion response');
+  });
+
+  it('rejects malformed Tauri audio file picker responses', async () => {
+    window.__TAURI__ = {
+      core: {
+        invoke: vi.fn(async () => ({ ok: true, path: '' })),
+      },
+    };
+    const client = createDesktopShellClient();
+
+    await expect(client.pickAudioFile()).rejects.toThrow('Invalid audio file picker response');
   });
 });

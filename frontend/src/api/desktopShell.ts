@@ -67,6 +67,7 @@ export interface DesktopShellClient {
   getBackendProcessStatus(): Promise<DesktopBackendProcessResult>;
   startBackendProcess(): Promise<DesktopBackendProcessResult>;
   stopBackendProcess(): Promise<DesktopBackendProcessResult>;
+  pickAudioFile(): Promise<string | undefined>;
   getWindowMode(): Promise<DesktopWindowMode>;
   setWindowMode(mode: DesktopWindowMode): Promise<{ ok: true; mode: DesktopWindowMode }>;
   setTrayEnabled(enabled: boolean): Promise<{ ok: true; enabled: boolean }>;
@@ -405,6 +406,27 @@ const isAudioCaptureUploadInput = (value: unknown): value is AudioCaptureUploadI
   );
 };
 
+const parseAudioFilePickerResult = (value: unknown): string | undefined => {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid audio file picker response');
+  }
+
+  const result = value as Partial<{ ok: unknown; path: unknown }>;
+  if (result.ok !== true) {
+    throw new Error('Invalid audio file picker response');
+  }
+
+  if (result.path === undefined || result.path === null) {
+    return undefined;
+  }
+
+  if (typeof result.path !== 'string' || result.path.trim().length === 0) {
+    throw new Error('Invalid audio file picker response');
+  }
+
+  return result.path;
+};
+
 const parseCapabilities = (value: unknown): DesktopShellCapabilities => {
   if (!value || typeof value !== 'object') {
     return fallbackCapabilities;
@@ -618,6 +640,12 @@ export function createDesktopShellClient(): DesktopShellClient {
       return invoke
         ? parseBackendProcessResult(await invoke('honey_stop_backend_process'))
         : fallbackBackendProcessResult();
+    },
+    async pickAudioFile() {
+      const invoke = getTauriInvoke();
+      return invoke
+        ? parseAudioFilePickerResult(await invoke('honey_pick_audio_file'))
+        : undefined;
     },
     async getWindowMode() {
       const invoke = getTauriInvoke();

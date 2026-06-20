@@ -24,11 +24,18 @@ const createFileTranscriptionTask = vi.hoisted(() => vi.fn(async (input: {
   outputFormats: input.outputFormats,
   transcriptText: '客户说明天继续推进。',
 })));
+const pickAudioFile = vi.hoisted(() => vi.fn(async () => 'D:\\recordings\\客户访谈.mp3'));
 
 vi.mock('@/api/client', () => ({
   backendClient: {
     listFileTranscriptionTasks,
     createFileTranscriptionTask,
+  },
+}));
+
+vi.mock('@/api/desktopShell', () => ({
+  desktopShellClient: {
+    pickAudioFile,
   },
 }));
 
@@ -38,6 +45,8 @@ describe('FileTranscriptionPage', () => {
   beforeEach(() => {
     listFileTranscriptionTasks.mockClear();
     createFileTranscriptionTask.mockClear();
+    pickAudioFile.mockClear();
+    pickAudioFile.mockResolvedValue('D:\\recordings\\客户访谈.mp3');
   });
 
   it('loads file transcription tasks from the backend client', async () => {
@@ -65,5 +74,24 @@ describe('FileTranscriptionPage', () => {
     });
     expect(await screen.findByText('客户访谈.mp3')).toBeInTheDocument();
     expect(screen.getByText('客户说明天继续推进。')).toBeInTheDocument();
+  });
+
+  it('fills the local file path from the native desktop file picker', async () => {
+    const user = userEvent.setup();
+    render(<FileTranscriptionPage />);
+
+    await screen.findByText('后端会议录音.wav');
+    await user.click(screen.getByRole('button', { name: '选择文件' }));
+
+    expect(pickAudioFile).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('本地文件路径')).toHaveValue('D:\\recordings\\客户访谈.mp3');
+
+    await user.click(screen.getByRole('button', { name: '开始转录' }));
+
+    expect(createFileTranscriptionTask).toHaveBeenCalledWith({
+      filePath: 'D:\\recordings\\客户访谈.mp3',
+      fileName: '客户访谈.mp3',
+      outputFormats: ['srt', 'txt', 'json', 'merged-txt'],
+    });
   });
 });

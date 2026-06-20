@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { FileTranscriptionOutputFormat, FileTranscriptionTask } from '@honey/api-contracts';
 
 import { backendClient } from '@/api/client';
+import { desktopShellClient } from '@/api/desktopShell';
 import { StatusBadge } from '@/components/StatusBadge';
 
 const taskTone = {
@@ -34,6 +35,7 @@ export function FileTranscriptionPage() {
   const [filePath, setFilePath] = useState('');
   const [outputFormats, setOutputFormats] = useState<FileTranscriptionOutputFormat[]>(['srt', 'txt', 'json', 'merged-txt']);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [isPickingFile, setIsPickingFile] = useState(false);
   const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
@@ -81,6 +83,21 @@ export function FileTranscriptionPage() {
     }
   };
 
+  const pickFile = async () => {
+    setIsPickingFile(true);
+    setFeedback('');
+    try {
+      const selectedPath = await desktopShellClient.pickAudioFile();
+      if (selectedPath) {
+        setFilePath(selectedPath);
+      }
+    } catch {
+      setFeedback('无法打开文件选择器，请手动填写本地文件路径');
+    } finally {
+      setIsPickingFile(false);
+    }
+  };
+
   return (
     <div className="page-stack">
       <section className="page-header">
@@ -112,6 +129,12 @@ export function FileTranscriptionPage() {
             onChange={(event) => setFilePath(event.target.value)}
           />
         </label>
+        <div className="button-row">
+          <button type="button" className="secondary-button" onClick={() => void pickFile()} disabled={isPickingFile}>
+            <FolderOpen size={16} />
+            选择文件
+          </button>
+        </div>
         <div className="checkbox-row">
           {outputFormatOptions.map((option) => (
             <label key={option.value}>
