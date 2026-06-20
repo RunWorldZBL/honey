@@ -950,6 +950,7 @@ pub fn run() {
             honey_set_tray_enabled,
             honey_set_startup_enabled,
             honey_pick_audio_file,
+            honey_pick_directory,
             honey_open_path,
             honey_register_hold_to_talk_hotkey,
             honey_unregister_hold_to_talk_hotkey,
@@ -1140,6 +1141,21 @@ async fn honey_pick_audio_file(app: tauri::AppHandle) -> Result<serde_json::Valu
         )
         .blocking_pick_file();
     let path = picked_file.and_then(|file_path| {
+        file_path
+            .as_path()
+            .map(|path| path.to_string_lossy().into_owned())
+    });
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "path": path
+    }))
+}
+
+#[tauri::command]
+async fn honey_pick_directory(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let picked_folder = app.dialog().file().blocking_pick_folder();
+    let path = picked_folder.and_then(|file_path| {
         file_path
             .as_path()
             .map(|path| path.to_string_lossy().into_owned())

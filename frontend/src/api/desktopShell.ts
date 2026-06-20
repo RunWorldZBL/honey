@@ -68,6 +68,7 @@ export interface DesktopShellClient {
   startBackendProcess(): Promise<DesktopBackendProcessResult>;
   stopBackendProcess(): Promise<DesktopBackendProcessResult>;
   pickAudioFile(): Promise<string | undefined>;
+  pickDirectory(): Promise<string | undefined>;
   openPath(input: { path: string }): Promise<{ ok: true; path: string }>;
   getWindowMode(): Promise<DesktopWindowMode>;
   setWindowMode(mode: DesktopWindowMode): Promise<{ ok: true; mode: DesktopWindowMode }>;
@@ -428,6 +429,27 @@ const parseAudioFilePickerResult = (value: unknown): string | undefined => {
   return result.path;
 };
 
+const parseDirectoryPickerResult = (value: unknown): string | undefined => {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid directory picker response');
+  }
+
+  const result = value as Partial<{ ok: unknown; path: unknown }>;
+  if (result.ok !== true) {
+    throw new Error('Invalid directory picker response');
+  }
+
+  if (result.path === undefined || result.path === null) {
+    return undefined;
+  }
+
+  if (typeof result.path !== 'string' || result.path.trim().length === 0) {
+    throw new Error('Invalid directory picker response');
+  }
+
+  return result.path;
+};
+
 const parseOpenPathResult = (value: unknown): { ok: true; path: string } => {
   if (!value || typeof value !== 'object') {
     throw new Error('Invalid open path response');
@@ -662,6 +684,12 @@ export function createDesktopShellClient(): DesktopShellClient {
       const invoke = getTauriInvoke();
       return invoke
         ? parseAudioFilePickerResult(await invoke('honey_pick_audio_file'))
+        : undefined;
+    },
+    async pickDirectory() {
+      const invoke = getTauriInvoke();
+      return invoke
+        ? parseDirectoryPickerResult(await invoke('honey_pick_directory'))
         : undefined;
     },
     async openPath(input) {

@@ -1,8 +1,9 @@
-import { Cpu, HardDriveDownload, Play, RefreshCw, Square } from 'lucide-react';
+import { Cpu, FolderOpen, HardDriveDownload, Play, RefreshCw, Square } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { LocalLlmRuntimeStatus, LocalModelInventoryItem, ModelProfile, RuntimeHealth } from '@honey/api-contracts';
 
 import { backendClient } from '@/api/client';
+import { desktopShellClient } from '@/api/desktopShell';
 import { StatusBadge } from '@/components/StatusBadge';
 
 const tierLabel = {
@@ -29,6 +30,7 @@ export function ModelsPage() {
   const [selectedLlmModelId, setSelectedLlmModelId] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isRuntimeBusy, setIsRuntimeBusy] = useState(false);
+  const [isModelDirectoryBusy, setIsModelDirectoryBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>();
 
   useEffect(() => {
@@ -67,6 +69,59 @@ export function ModelsPage() {
       cancelled = true;
     };
   }, []);
+
+  const refreshModelState = async () => {
+    setIsLoading(true);
+    try {
+      const [nextModels, nextRuntimeHealth, runtimeStatus] = await Promise.all([
+        backendClient.listModels(),
+        backendClient.getRuntimeHealth(),
+        backendClient.getLocalLlmRuntimeStatus(),
+      ]);
+      setModels(nextModels);
+      setRuntimeHealth(nextRuntimeHealth);
+      setLlmRuntime(runtimeStatus);
+      setSelectedLlmModelId(current =>
+        nextRuntimeHealth.models.some(model =>
+          model.id === current
+          && model.kind === 'llm'
+          && model.status === 'installed'
+          && model.requiredFiles.length > 0,
+        )
+          ? current
+          : nextRuntimeHealth.models.find(model =>
+            model.kind === 'llm'
+            && model.status === 'installed'
+            && model.requiredFiles.length > 0,
+          )?.id || '',
+      );
+      setErrorMessage(undefined);
+    } catch {
+      setErrorMessage('模型清单读取失败');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const chooseModelDirectory = async (kind: 'asr' | 'llm') => {
+    setIsModelDirectoryBusy(true);
+    try {
+      const directory = await desktopShellClient.pickDirectory();
+      if (!directory) {
+        return;
+      }
+
+      await backendClient.updateSettings(kind === 'asr'
+        ? { asrModelRoot: directory }
+        : { llmModelRoot: directory });
+      await refreshModelState();
+      setErrorMessage(undefined);
+    } catch {
+      setErrorMessage(kind === 'asr' ? '语音转文字模型目录保存失败' : '人设模型目录保存失败');
+    } finally {
+      setIsModelDirectoryBusy(false);
+    }
+  };
 
   const refreshRuntimeStatus = async () => {
     setIsRuntimeBusy(true);
@@ -147,9 +202,9 @@ export function ModelsPage() {
           <h2>模型</h2>
           <p>ASR 在界面中称为“语音转文字模型”；LLM 只在人设模式开启时使用。</p>
         </div>
-        <button type="button" className="primary-button" disabled>
-          <HardDriveDownload size={16} />
-          导入模型
+        <button type="button" className="primary-button" onClick={refreshModelState} disabled={isLoading || isModelDirectoryBusy}>
+          <RefreshCw size={16} />
+          刷新清单
         </button>
       </section>
 
@@ -173,7 +228,12 @@ export function ModelsPage() {
         </section>
       ) : null}
 
-      <ModelDirectoryPanel health={runtimeHealth} />
+      <ModelDirectoryPanel
+        health={runtimeHealth}
+        isBusy={isModelDirectoryBusy}
+        onPickAsrDirectory={() => void chooseModelDirectory('asr')}
+        onPickLlmDirectory={() => void chooseModelDirectory('llm')}
+      />
 
       <section className="panel runtime-panel">
         <div className="section-heading runtime-panel__heading">
@@ -245,7 +305,17 @@ export function ModelsPage() {
   );
 }
 
-function ModelDirectoryPanel({ health }: { health?: RuntimeHealth }) {
+function ModelDirectoryPanel({
+  health,
+  isBusy,
+  onPickAsrDirectory,
+  onPickLlmDirectory,
+}: {
+  health?: RuntimeHealth;
+  isBusy: boolean;
+  onPickAsrDirectory: () => void;
+  onPickLlmDirectory: () => void;
+}) {
   if (!health) {
     return null;
   }
@@ -267,11 +337,15 @@ function ModelDirectoryPanel({ health }: { health?: RuntimeHealth }) {
           title="语音转文字模型"
           directory={health.modelRoot}
           inventory={asrInventory}
+          isBusy={isBusy}
+          onPickDirectory={onPickAsrDirectory}
         />
         <ModelDirectoryCard
           title="本地大语言模型"
           directory={health.llmModelRoot}
           inventory={llmInventory}
+          isBusy={isBusy}
+          onPickDirectory={onPickLlmDirectory}
         />
       </div>
     </section>
@@ -282,16 +356,26 @@ function ModelDirectoryCard({
   title,
   directory,
   inventory,
+  isBusy,
+  onPickDirectory,
 }: {
   title: string;
   directory: string;
   inventory: LocalModelInventoryItem[];
+  isBusy: boolean;
+  onPickDirectory: () => void;
 }) {
   const requiredFiles = Array.from(new Set(inventory.flatMap(model => model.requiredFiles)));
 
   return (
     <article className="model-directory-card">
-      <span>{title}</span>
+      <div className="model-directory-card__head">
+        <span>{title}</span>
+        <button type="button" className="secondary-button" onClick={onPickDirectory} disabled={isBusy}>
+          <FolderOpen size={16} />
+          选择目录
+        </button>
+      </div>
       <strong>{directory}</strong>
       {requiredFiles.length > 0 ? (
         <ul>

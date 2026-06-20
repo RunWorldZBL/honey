@@ -866,6 +866,13 @@ select:focus {
   background: var(--background);
 }
 
+.model-directory-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .model-directory-card span {
   color: var(--muted-foreground);
   font-size: 12px;
