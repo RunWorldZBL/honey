@@ -3,6 +3,7 @@ import type {
   AudioCaptureUploadInput,
   AudioCaptureUploadResult,
   CreateFileTranscriptionTaskInput,
+  FileTranscriptionOutputFormat,
   DictationSessionInput,
   DictationSessionResult,
   FileTranscriptionTask,
@@ -122,6 +123,74 @@ const resolveAudioCaptureExtension = (input: AudioCaptureUploadInput) => {
 };
 
 const createAudioCaptureDirectory = (localDataPath: string) => join(localDataPath, 'audio-captures');
+
+const createFileTranscriptionDirectory = (localDataPath: string) => join(localDataPath, 'file-transcriptions');
+
+const sanitizeFileNameSegment = (input: string) =>
+  input.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\.+$/g, '').trim() || 'transcript';
+
+const getFileStem = (fileName: string) => {
+  const extension = extname(fileName);
+  return sanitizeFileNameSegment(extension ? fileName.slice(0, -extension.length) : fileName);
+};
+
+const formatSrtTimestamp = (milliseconds: number) => {
+  const normalized = Math.max(0, Math.round(milliseconds));
+  const hours = Math.floor(normalized / 3_600_000);
+  const minutes = Math.floor((normalized % 3_600_000) / 60_000);
+  const seconds = Math.floor((normalized % 60_000) / 1000);
+  const millis = normalized % 1000;
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
+};
+
+const createFileTranscriptionSrt = (text: string, durationMs?: number) =>
+  `1\n00:00:00,000 --> ${formatSrtTimestamp(durationMs ?? 1000)}\n${text}\n`;
+
+const createMergedFileTranscriptionText = (input: {
+  fileName: string;
+  sourcePath: string;
+  transcriptText: string;
+  durationMs?: number;
+}) => [
+  `文件：${input.fileName}`,
+  `来源：${input.sourcePath}`,
+  ...(input.durationMs !== undefined ? [`时长：${input.durationMs} ms`] : []),
+  '',
+  input.transcriptText,
+  '',
+].join('\n');
+
+const writeFileTranscriptionOutputs = async (input: {
+  id: string;
+  fileName: string;
+  sourcePath: string;
+  outputFormats: FileTranscriptionOutputFormat[];
+  transcriptText: string;
+  durationMs?: number;
+  localDataPath: string;
+}) => {
+  const outputRoot = createFileTranscriptionDirectory(input.localDataPath);
+  const outputDirectory = join(outputRoot, sanitizeFileNameSegment(input.id));
+  const fileStem = getFileStem(input.fileName);
+  await mkdir(outputDirectory, { recursive: true });
+
+  const outputWriters: Record<FileTranscriptionOutputFormat, () => Promise<void>> = {
+    txt: () => writeFile(join(outputDirectory, `${fileStem}.txt`), `${input.transcriptText}\n`, 'utf8'),
+    json: () => writeFile(join(outputDirectory, `${fileStem}.json`), `${JSON.stringify({
+      fileName: input.fileName,
+      sourcePath: input.sourcePath,
+      transcriptText: input.transcriptText,
+      durationMs: input.durationMs,
+    }, null, 2)}\n`, 'utf8'),
+    srt: () => writeFile(join(outputDirectory, `${fileStem}.srt`), createFileTranscriptionSrt(input.transcriptText, input.durationMs), 'utf8'),
+    'merged-txt': () => writeFile(join(outputDirectory, `${fileStem}.merged.txt`), createMergedFileTranscriptionText(input), 'utf8'),
+  };
+
+  await Promise.all(input.outputFormats.map(format => outputWriters[format]()));
+
+  return outputDirectory;
+};
 
 const isPathInsideDirectory = (path: string, directory: string) => {
   const relativePath = relative(resolve(directory), resolve(path));
@@ -494,11 +563,22 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
               aliases: [...hotword.aliases],
             })),
         });
+        const transcriptText = applyRules(applyHotwords(transcription.text, hotwords), rules);
+        const resultPath = await writeFileTranscriptionOutputs({
+          id: baseTask.id,
+          fileName: baseTask.fileName,
+          sourcePath: input.filePath,
+          outputFormats: baseTask.outputFormats,
+          transcriptText,
+          durationMs: transcription.durationMs,
+          localDataPath: settings.localDataPath,
+        });
         const task: FileTranscriptionTask = {
           ...baseTask,
           status: 'completed',
           progress: 100,
-          transcriptText: applyRules(applyHotwords(transcription.text, hotwords), rules),
+          transcriptText,
+          resultPath,
         };
         fileTranscriptionTasks = [task, ...fileTranscriptionTasks];
 

@@ -510,34 +510,92 @@ async function testFileTranscriptionTasksAndTrayActions() {
 
 async function testCreateFileTranscriptionTaskUsesAsrAdapter() {
   const transcribeCalls: Array<{ audioPath: string; modelId: string }> = [];
-  const service = createHoneyService({
-    asrAdapter: {
-      transcribe: async (input) => {
-        transcribeCalls.push(input);
-        return {
+  const dataDir = await mkdtemp(join(tmpdir(), 'honey-file-transcription-adapter-'));
+  const dataFilePath = join(dataDir, 'honey-data.json');
+
+  try {
+    const service = createHoneyService({
+      dataFilePath,
+      asrAdapter: {
+        transcribe: async (input) => {
+          transcribeCalls.push(input);
+          return {
+            text: '客户说明天继续推进。',
+            durationMs: 2300,
+          };
+        },
+      },
+    });
+    await service.updateSettings({ localDataPath: dataDir });
+
+    const task = await service.createFileTranscriptionTask({
+      filePath: 'D:/recordings/客户访谈.mp3',
+      outputFormats: ['txt', 'json'],
+      asrModelId: 'fun-asr-nano',
+    });
+    const tasks = await service.listFileTranscriptionTasks();
+
+    assertEqual(transcribeCalls[0]?.audioPath, 'D:/recordings/客户访谈.mp3', 'file transcription should pass MP3 paths to the ASR adapter');
+    assertEqual(transcribeCalls[0]?.modelId, 'fun-asr-nano', 'file transcription should pass the selected ASR model');
+    assertEqual(task.fileName, '客户访谈.mp3', 'file transcription should derive file name from the local path');
+    assertEqual(task.sourcePath, 'D:/recordings/客户访谈.mp3', 'file transcription should keep the source file path');
+    assertEqual(task.status, 'completed', 'file transcription should complete when ASR succeeds');
+    assertEqual(task.progress, 100, 'completed file transcription should report full progress');
+    assertEqual(task.transcriptText, '客户说明天继续推进。', 'file transcription should expose transcript text on the task');
+    assertEqual(task.outputFormats.join(','), 'txt,json', 'file transcription should keep requested output formats');
+    assertEqual(tasks[0]?.id, task.id, 'created file transcription tasks should be prepended to the queue');
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+}
+
+async function testCreateFileTranscriptionTaskWritesSelectedOutputFiles() {
+  const dataDir = await mkdtemp(join(tmpdir(), 'honey-file-transcription-'));
+  const dataFilePath = join(dataDir, 'honey-data.json');
+
+  try {
+    const service = createHoneyService({
+      dataFilePath,
+      asrAdapter: {
+        transcribe: async () => ({
           text: '客户说明天继续推进。',
           durationMs: 2300,
-        };
+        }),
       },
-    },
-  });
+    });
+    await service.updateSettings({ localDataPath: dataDir });
 
-  const task = await service.createFileTranscriptionTask({
-    filePath: 'D:/recordings/客户访谈.mp3',
-    outputFormats: ['txt', 'json'],
-    asrModelId: 'fun-asr-nano',
-  });
-  const tasks = await service.listFileTranscriptionTasks();
+    const task = await service.createFileTranscriptionTask({
+      filePath: 'D:/recordings/客户访谈.mp3',
+      outputFormats: ['txt', 'json', 'srt', 'merged-txt'],
+    });
 
-  assertEqual(transcribeCalls[0]?.audioPath, 'D:/recordings/客户访谈.mp3', 'file transcription should pass MP3 paths to the ASR adapter');
-  assertEqual(transcribeCalls[0]?.modelId, 'fun-asr-nano', 'file transcription should pass the selected ASR model');
-  assertEqual(task.fileName, '客户访谈.mp3', 'file transcription should derive file name from the local path');
-  assertEqual(task.sourcePath, 'D:/recordings/客户访谈.mp3', 'file transcription should keep the source file path');
-  assertEqual(task.status, 'completed', 'file transcription should complete when ASR succeeds');
-  assertEqual(task.progress, 100, 'completed file transcription should report full progress');
-  assertEqual(task.transcriptText, '客户说明天继续推进。', 'file transcription should expose transcript text on the task');
-  assertEqual(task.outputFormats.join(','), 'txt,json', 'file transcription should keep requested output formats');
-  assertEqual(tasks[0]?.id, task.id, 'created file transcription tasks should be prepended to the queue');
+    assertEqual(task.status, 'completed', 'file transcription output task should complete');
+    assertOk(task.resultPath, 'completed file transcription should expose a result directory');
+    assertEqual(task.resultPath?.startsWith(join(dataDir, 'file-transcriptions')), true, 'file transcription outputs should stay under local data path');
+
+    const txt = await readFile(join(task.resultPath ?? '', '客户访谈.txt'), 'utf8');
+    const mergedTxt = await readFile(join(task.resultPath ?? '', '客户访谈.merged.txt'), 'utf8');
+    const json = JSON.parse(await readFile(join(task.resultPath ?? '', '客户访谈.json'), 'utf8')) as {
+      fileName: string;
+      sourcePath: string;
+      transcriptText: string;
+      durationMs?: number;
+    };
+    const srt = await readFile(join(task.resultPath ?? '', '客户访谈.srt'), 'utf8');
+
+    assertEqual(txt, '客户说明天继续推进。\n', 'TXT output should contain the final transcript text');
+    assertEqual(mergedTxt.includes('客户访谈.mp3'), true, 'merged TXT output should include the source file name');
+    assertEqual(mergedTxt.includes('客户说明天继续推进。'), true, 'merged TXT output should include the transcript text');
+    assertEqual(json.fileName, '客户访谈.mp3', 'JSON output should include the source file name');
+    assertEqual(json.sourcePath, 'D:/recordings/客户访谈.mp3', 'JSON output should include the original source path');
+    assertEqual(json.transcriptText, '客户说明天继续推进。', 'JSON output should include transcript text');
+    assertEqual(json.durationMs, 2300, 'JSON output should include ASR duration when available');
+    assertEqual(srt.includes('00:00:00,000 --> 00:00:02,300'), true, 'SRT output should use the ASR duration');
+    assertEqual(srt.includes('客户说明天继续推进。'), true, 'SRT output should include transcript text');
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
 }
 
 async function testModelDiscoveryAndDictationSession() {
@@ -1056,6 +1114,7 @@ await testPersonaMutations();
 await testTranscriptAndPersonaMemory();
 await testFileTranscriptionTasksAndTrayActions();
 await testCreateFileTranscriptionTaskUsesAsrAdapter();
+await testCreateFileTranscriptionTaskWritesSelectedOutputFiles();
 await testModelDiscoveryAndDictationSession();
 await testHotwordBlacklistProtectsTermsInDictationOutput();
 await testRuntimeHealthReportsLocalDependencies();
