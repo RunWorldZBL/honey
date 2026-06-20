@@ -86,6 +86,7 @@ describe('SettingsPage', () => {
       windowMode: 'mini',
       currentMode: 'direct',
       overlayEnabled: false,
+      triggerMode: 'click-to-toggle',
       outputMethod: 'paste',
       forcePasteApps: [],
     }));
@@ -160,6 +161,19 @@ describe('SettingsPage', () => {
 
     expect(useDictationUiStore.getState()).toMatchObject({
       hotkey: 'F10',
+    });
+  });
+
+  it('syncs saved trigger mode to the dictation runtime state', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await screen.findByDisplayValue('F9');
+    await user.selectOptions(screen.getByLabelText('触发方式'), 'hold-to-talk');
+    await user.click(screen.getByRole('button', { name: '保存设置' }));
+
+    expect(useDictationUiStore.getState()).toMatchObject({
+      triggerMode: 'hold-to-talk',
     });
   });
 

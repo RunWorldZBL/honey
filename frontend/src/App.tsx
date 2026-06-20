@@ -24,6 +24,7 @@ export default function App() {
     setWindowMode,
     currentMode,
     hotkey,
+    triggerMode,
     asrModelStatus,
     overlayEnabled,
     overlayPosition,
@@ -35,6 +36,7 @@ export default function App() {
     setHotkey,
     setOverlayEnabled,
     setOverlayPosition,
+    setTriggerMode,
     setOutputRuntimeSettings,
   } = useDictationUiStore();
   const handleSessionCompleted = useCallback((record: { outputText: string }) => {
@@ -47,6 +49,7 @@ export default function App() {
     latestText,
     outputMethod,
     restoreClipboard,
+    triggerMode,
     onSessionCompleted: handleSessionCompleted,
   });
 
@@ -60,6 +63,7 @@ export default function App() {
       if (!cancelled) {
         setLatestText(records[0]?.outputText);
         setHotkey(settings.hotkey);
+        setTriggerMode(settings.triggerMode);
         setCurrentMode(settings.personaModeEnabled ? settings.defaultMode : 'direct');
         setOverlayEnabled(settings.overlayEnabled);
         setOverlayPosition(settings.overlayPosition);
@@ -75,7 +79,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [setCurrentMode, setHotkey, setOverlayEnabled, setOverlayPosition, setOutputRuntimeSettings, setWindowMode]);
+  }, [setCurrentMode, setHotkey, setOverlayEnabled, setOverlayPosition, setOutputRuntimeSettings, setTriggerMode, setWindowMode]);
 
   const page = useMemo(() => {
     switch (activeRoute) {

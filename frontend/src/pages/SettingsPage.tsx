@@ -20,6 +20,7 @@ export function SettingsPage() {
   const setOverlayEnabled = useDictationUiStore(state => state.setOverlayEnabled);
   const setOverlayPosition = useDictationUiStore(state => state.setOverlayPosition);
   const setOutputRuntimeSettings = useDictationUiStore(state => state.setOutputRuntimeSettings);
+  const setTriggerMode = useDictationUiStore(state => state.setTriggerMode);
   const setWindowMode = useDictationUiStore(state => state.setWindowMode);
   const [settings, setSettings] = useState<AppSettings>();
   const [settingsPatch, setSettingsPatch] = useState<UpdateAppSettings>({});
@@ -54,6 +55,7 @@ export function SettingsPage() {
     const savedSettings = await backendClient.updateSettings(settingsPatch);
     setSettings(savedSettings);
     setHotkey(savedSettings.hotkey);
+    setTriggerMode(savedSettings.triggerMode);
     setCurrentMode(savedSettings.personaModeEnabled ? savedSettings.defaultMode : 'direct');
     setOverlayEnabled(savedSettings.overlayEnabled);
     setOverlayPosition(savedSettings.overlayPosition);

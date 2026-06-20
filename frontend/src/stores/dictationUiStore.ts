@@ -11,6 +11,7 @@ interface DictationUiStore {
   windowMode: AppWindowMode;
   currentMode: DictationMode;
   hotkey: string;
+  triggerMode: AppSettings['triggerMode'];
   selectedPersonaId?: string;
   outputMethod: AppSettings['outputMethod'];
   restoreClipboard: AppSettings['restoreClipboard'];
@@ -22,6 +23,7 @@ interface DictationUiStore {
   setWindowMode: (mode: AppWindowMode) => void;
   setCurrentMode: (mode: DictationMode) => void;
   setHotkey: (hotkey: string) => void;
+  setTriggerMode: (triggerMode: AppSettings['triggerMode']) => void;
   setSelectedPersonaId: (personaId?: string) => void;
   setOutputRuntimeSettings: (settings: {
     outputMethod: AppSettings['outputMethod'];
@@ -37,6 +39,7 @@ export const useDictationUiStore = create<DictationUiStore>((set) => ({
   windowMode: 'full',
   currentMode: 'direct',
   hotkey: 'CapsLock',
+  triggerMode: 'hold-to-talk',
   selectedPersonaId: 'persona-office',
   outputMethod: 'paste',
   restoreClipboard: true,
@@ -48,6 +51,7 @@ export const useDictationUiStore = create<DictationUiStore>((set) => ({
   setWindowMode: (windowMode) => set({ windowMode }),
   setCurrentMode: (currentMode) => set({ currentMode }),
   setHotkey: (hotkey) => set({ hotkey }),
+  setTriggerMode: (triggerMode) => set({ triggerMode }),
   setSelectedPersonaId: (selectedPersonaId) => set({ selectedPersonaId }),
   setOutputRuntimeSettings: ({ outputMethod, restoreClipboard, forcePasteApps }) => set({
     outputMethod,

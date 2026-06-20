@@ -312,6 +312,42 @@ describe('useMockDictationHotkey', () => {
     expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('idle');
   });
 
+  it('toggles listening with repeated key presses in click-to-toggle mode', async () => {
+    renderHook(() => useMockDictationHotkey({
+      enabled: true,
+      triggerMode: 'click-to-toggle',
+    }));
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+    });
+
+    expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
+      state: 'listening',
+      volumeLevel: 0,
+    });
+    expect(startHoldToTalkCapture).toHaveBeenCalledOnce();
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+    });
+
+    expect(finishHoldToTalkCapture).not.toHaveBeenCalled();
+    expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('listening');
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+    });
+
+    expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('recognizing');
+    await flushAsyncWork();
+    expect(finishHoldToTalkCapture).toHaveBeenCalledOnce();
+    expect(runDirectDictationSession).toHaveBeenCalledWith({
+      audioPath: 'mock://desktop-captured.wav',
+      sourceApp: 'Mock 输入框',
+    });
+  });
+
   it('runs a backend direct dictation session from Tauri global hotkey release', async () => {
     const onSessionCompleted = vi.fn();
     renderHook(() => useMockDictationHotkey({

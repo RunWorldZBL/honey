@@ -136,6 +136,21 @@ describe('App', () => {
     });
   });
 
+  it('passes the configured trigger mode to the dictation hotkey hook', async () => {
+    getSettings.mockResolvedValueOnce({
+      ...appSettings,
+      triggerMode: 'click-to-toggle',
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+        triggerMode: 'click-to-toggle',
+      }));
+    });
+  });
+
   it('syncs default window mode and persona mode from settings into runtime UI state', async () => {
     getSettings.mockResolvedValueOnce({
       ...appSettings,

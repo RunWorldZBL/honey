@@ -8,6 +8,7 @@ import { useDictationUiStore } from '@/stores/dictationUiStore';
 interface UseMockDictationHotkeyOptions {
   enabled: boolean;
   hotkey?: string;
+  triggerMode?: 'hold-to-talk' | 'click-to-toggle';
   latestText?: string;
   forcePasteApps?: string[];
   mockAudioPath?: string;
@@ -21,6 +22,7 @@ interface UseMockDictationHotkeyOptions {
 export function useMockDictationHotkey({
   enabled,
   hotkey = 'CapsLock',
+  triggerMode = 'hold-to-talk',
   latestText,
   forcePasteApps = [],
   mockAudioPath = 'mock://hold-to-talk.wav',
@@ -237,6 +239,16 @@ export function useMockDictationHotkey({
         return;
       }
 
+      if (triggerMode === 'click-to-toggle') {
+        if (pressedRef.current) {
+          finishListening();
+          return;
+        }
+
+        startListening();
+        return;
+      }
+
       startListening();
     };
 
@@ -245,7 +257,9 @@ export function useMockDictationHotkey({
         return;
       }
 
-      finishListening();
+      if (triggerMode === 'hold-to-talk') {
+        finishListening();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -260,11 +274,18 @@ export function useMockDictationHotkey({
         }
 
         if (event.state === 'pressed') {
+          if (triggerMode === 'click-to-toggle' && pressedRef.current) {
+            finishListening();
+            return;
+          }
+
           startListening();
           return;
         }
 
-        finishListening();
+        if (triggerMode === 'hold-to-talk') {
+          finishListening();
+        }
       }),
     ).then((unlisten) => {
       if (disposed) {
@@ -285,5 +306,5 @@ export function useMockDictationHotkey({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [enabled, forcePasteApps, hotkey, latestText, mockAudioPath, onSessionCompleted, outputMethod, personaId, restoreClipboard, sourceApp]);
+  }, [enabled, forcePasteApps, hotkey, latestText, mockAudioPath, onSessionCompleted, outputMethod, personaId, restoreClipboard, sourceApp, triggerMode]);
 }
