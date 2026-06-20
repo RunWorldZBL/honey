@@ -69,6 +69,7 @@ export interface DesktopShellClient {
   stopBackendProcess(): Promise<DesktopBackendProcessResult>;
   getWindowMode(): Promise<DesktopWindowMode>;
   setWindowMode(mode: DesktopWindowMode): Promise<{ ok: true; mode: DesktopWindowMode }>;
+  setTrayEnabled(enabled: boolean): Promise<{ ok: true; enabled: boolean }>;
   onWindowModeChange(handler: (mode: DesktopWindowMode) => void): Promise<HoldToTalkHotkeyUnlisten>;
   registerHoldToTalkHotkey(input: { hotkey: string }): Promise<RegisterHoldToTalkHotkeyResult>;
   unregisterHoldToTalkHotkey(): Promise<UnregisterHoldToTalkHotkeyResult>;
@@ -640,6 +641,22 @@ export function createDesktopShellClient(): DesktopShellClient {
       return {
         ok: true,
         mode: result.mode,
+      };
+    },
+    async setTrayEnabled(enabled) {
+      const invoke = getTauriInvoke();
+      if (!invoke) {
+        return { ok: true, enabled };
+      }
+
+      const result = await invoke('honey_set_tray_enabled', { enabled }) as { ok?: unknown; enabled?: unknown };
+      if (result.ok !== true || typeof result.enabled !== 'boolean') {
+        throw new Error('Invalid tray preference response');
+      }
+
+      return {
+        ok: true,
+        enabled: result.enabled,
       };
     },
     async onWindowModeChange(handler) {

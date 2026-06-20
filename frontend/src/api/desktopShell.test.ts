@@ -58,6 +58,10 @@ describe('desktopShell', () => {
       ok: true,
       mode: 'mini',
     });
+    await expect(client.setTrayEnabled(true)).resolves.toEqual({
+      ok: true,
+      enabled: true,
+    });
     await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock' })).resolves.toMatchObject({
       ok: true,
       state: 'listening',
@@ -260,6 +264,10 @@ describe('desktopShell', () => {
         return { ok: true, mode: (args as { mode: string }).mode };
       }
 
+      if (command === 'honey_set_tray_enabled') {
+        return { ok: true, enabled: (args as { enabled: boolean }).enabled };
+      }
+
       if (command === 'honey_start_hold_to_talk_capture') {
         return {
           ok: true,
@@ -333,6 +341,10 @@ describe('desktopShell', () => {
       ok: true,
       mode: 'mini',
     });
+    await expect(client.setTrayEnabled(false)).resolves.toEqual({
+      ok: true,
+      enabled: false,
+    });
     await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel: vi.fn() })).resolves.toMatchObject({
       state: 'listening',
       audioPath: captureAudioPath,
@@ -361,6 +373,7 @@ describe('desktopShell', () => {
     expect(invoke).toHaveBeenCalledWith('honey_stop_backend_process');
     expect(invoke).toHaveBeenCalledWith('honey_get_desktop_window_mode');
     expect(invoke).toHaveBeenCalledWith('honey_set_desktop_window_mode', { mode: 'mini' });
+    expect(invoke).toHaveBeenCalledWith('honey_set_tray_enabled', { enabled: false });
     expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'CapsLock' });
     expect(invoke).toHaveBeenCalledWith('honey_finish_hold_to_talk_capture');
     expect(invoke).toHaveBeenCalledWith('honey_cancel_hold_to_talk_capture');

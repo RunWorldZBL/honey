@@ -61,6 +61,7 @@ export function SettingsPage() {
     setCurrentMode(savedSettings.personaModeEnabled ? savedSettings.defaultMode : 'direct');
     setOverlayEnabled(savedSettings.overlayEnabled);
     setOverlayPosition(savedSettings.overlayPosition);
+    await desktopShellClient.setTrayEnabled(savedSettings.trayEnabled);
     setOutputRuntimeSettings({
       outputMethod: savedSettings.outputMethod,
       restoreClipboard: savedSettings.restoreClipboard,

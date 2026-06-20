@@ -33,6 +33,7 @@ const getSettings = vi.hoisted(() => vi.fn(async () => ({
 
 const listTrayActions = vi.hoisted(() => vi.fn(async () => []));
 const setWindowMode = vi.hoisted(() => vi.fn(async (mode: 'full' | 'mini') => ({ ok: true as const, mode })));
+const setTrayEnabled = vi.hoisted(() => vi.fn(async (enabled: boolean) => ({ ok: true as const, enabled })));
 const updateSettings = vi.hoisted(() => vi.fn(async (patch) => ({
   defaultMode: 'direct',
   personaModeEnabled: false,
@@ -73,6 +74,7 @@ vi.mock('@/api/client', () => ({
 vi.mock('@/api/desktopShell', () => ({
   desktopShellClient: {
     setWindowMode,
+    setTrayEnabled,
   },
 }));
 
@@ -95,6 +97,7 @@ describe('SettingsPage', () => {
     updateSettings.mockClear();
     listTrayActions.mockClear();
     setWindowMode.mockClear();
+    setTrayEnabled.mockClear();
   });
 
   it('loads setting defaults from the backend client', async () => {
@@ -216,6 +219,20 @@ describe('SettingsPage', () => {
     expect(useDictationUiStore.getState()).toMatchObject({
       overlayPosition: 'bottom-left',
     });
+  });
+
+  it('syncs saved tray preference to the desktop shell', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await screen.findByDisplayValue('F9');
+    await user.click(screen.getByLabelText('启用托盘'));
+    await user.click(screen.getByRole('button', { name: '保存设置' }));
+
+    expect(updateSettings).toHaveBeenCalledWith({
+      trayEnabled: true,
+    });
+    expect(setTrayEnabled).toHaveBeenCalledWith(true);
   });
 
   it('applies desktop window mode immediately through the desktop shell', async () => {

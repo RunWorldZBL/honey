@@ -46,6 +46,7 @@ const useMockDictationHotkey = vi.hoisted(() => vi.fn());
 const desktopShell = vi.hoisted(() => {
   let windowModeHandler: ((mode: 'full' | 'mini') => void) | undefined;
   const unlistenWindowMode = vi.fn();
+  const setTrayEnabled = vi.fn(async (enabled: boolean) => ({ ok: true as const, enabled }));
   const onWindowModeChange = vi.fn(async (handler: (mode: 'full' | 'mini') => void) => {
     windowModeHandler = handler;
     return unlistenWindowMode;
@@ -59,8 +60,10 @@ const desktopShell = vi.hoisted(() => {
       windowModeHandler = undefined;
       onWindowModeChange.mockClear();
       unlistenWindowMode.mockClear();
+      setTrayEnabled.mockClear();
     },
     onWindowModeChange,
+    setTrayEnabled,
     unlistenWindowMode,
   };
 });
@@ -77,6 +80,7 @@ vi.mock('@/hooks/useMockDictationHotkey', () => ({
 vi.mock('@/api/desktopShell', () => ({
   desktopShellClient: {
     onWindowModeChange: desktopShell.onWindowModeChange,
+    setTrayEnabled: desktopShell.setTrayEnabled,
   },
 }));
 vi.mock('@/components/AppShell', () => ({
@@ -229,6 +233,19 @@ describe('App', () => {
     expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
       enabled: false,
     }));
+  });
+
+  it('syncs tray preference from settings into the desktop shell', async () => {
+    getSettings.mockResolvedValueOnce({
+      ...appSettings,
+      trayEnabled: false,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(desktopShell.setTrayEnabled).toHaveBeenCalledWith(false);
+    });
   });
 
   it('hides the dictation overlay when settings disable it', async () => {

@@ -26,6 +26,7 @@ static DESKTOP_WINDOW_MODE: OnceLock<Mutex<String>> = OnceLock::new();
 static HOLD_TO_TALK_CAPTURE: OnceLock<Mutex<HoldToTalkCapture>> = OnceLock::new();
 static REGISTERED_HOLD_TO_TALK_HOTKEY: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BACKEND_PROCESS: OnceLock<Mutex<BackendProcessState>> = OnceLock::new();
+static TRAY_ENABLED: OnceLock<Mutex<bool>> = OnceLock::new();
 
 const HOLD_TO_TALK_HOTKEY_EVENT: &str = "honey://hold-to-talk-hotkey";
 #[cfg(not(test))]
@@ -111,6 +112,14 @@ fn registered_hold_to_talk_hotkey() -> &'static Mutex<Option<String>> {
 
 fn backend_process_state() -> &'static Mutex<BackendProcessState> {
     BACKEND_PROCESS.get_or_init(|| Mutex::new(BackendProcessState::default()))
+}
+
+fn tray_enabled() -> &'static Mutex<bool> {
+    TRAY_ENABLED.get_or_init(|| Mutex::new(true))
+}
+
+fn should_hide_window_on_close(window_label: &str, tray_enabled: bool) -> bool {
+    window_label == "main" && tray_enabled
 }
 
 fn set_desktop_window_mode_state(mode: &str) -> Result<String, String> {
@@ -853,6 +862,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let tray_enabled = *tray_enabled().lock().expect("tray enabled lock poisoned");
+                if should_hide_window_on_close(window.label(), tray_enabled) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             let _ = APP_HANDLE.set(app.handle().clone());
             #[cfg(not(test))]
@@ -866,6 +884,7 @@ pub fn run() {
             honey_stop_backend_process,
             honey_get_desktop_window_mode,
             honey_set_desktop_window_mode,
+            honey_set_tray_enabled,
             honey_register_hold_to_talk_hotkey,
             honey_unregister_hold_to_talk_hotkey,
             honey_start_hold_to_talk_capture,
@@ -1013,6 +1032,16 @@ fn honey_get_desktop_window_mode() -> serde_json::Value {
 fn honey_set_desktop_window_mode(mode: String) -> Result<serde_json::Value, String> {
     let mode = set_desktop_window_mode_state(&mode)?;
     Ok(desktop_window_mode_json(&mode))
+}
+
+#[tauri::command]
+fn honey_set_tray_enabled(enabled: bool) -> Result<serde_json::Value, String> {
+    *tray_enabled().lock().expect("tray enabled lock poisoned") = enabled;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "enabled": enabled
+    }))
 }
 
 #[tauri::command]
@@ -1349,6 +1378,24 @@ mod tests {
         assert_eq!(capabilities["canManageBackend"], true);
         assert_eq!(capabilities["canUseTray"], true);
         assert_eq!(capabilities["backendBaseUrl"], "http://127.0.0.1:33577");
+    }
+
+    #[test]
+    fn stores_tray_enabled_preference() {
+        let disabled = honey_set_tray_enabled(false).expect("tray preference should be valid");
+        assert_eq!(disabled["ok"], true);
+        assert_eq!(disabled["enabled"], false);
+
+        let enabled = honey_set_tray_enabled(true).expect("tray preference should be valid");
+        assert_eq!(enabled["ok"], true);
+        assert_eq!(enabled["enabled"], true);
+    }
+
+    #[test]
+    fn only_hides_main_window_on_close_when_tray_is_enabled() {
+        assert_eq!(should_hide_window_on_close("main", true), true);
+        assert_eq!(should_hide_window_on_close("main", false), false);
+        assert_eq!(should_hide_window_on_close("settings", true), false);
     }
 
     #[test]
