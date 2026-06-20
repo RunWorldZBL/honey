@@ -60,16 +60,40 @@ const applyRules = (input: string, rules: ReplaceRule[]) =>
     return text.split(rule.pattern).join(rule.replacement);
   }, input);
 
+const protectHotwordBlacklistTerms = (input: string, blacklist: string[]) => {
+  const protectedTerms: string[] = [];
+  const text = blacklist.reduce((nextText, term) => {
+    if (!term || !nextText.includes(term)) {
+      return nextText;
+    }
+
+    const token = `__HONEY_HOTWORD_BLACKLIST_${protectedTerms.length}__`;
+    protectedTerms.push(term);
+    return nextText.split(term).join(token);
+  }, input);
+
+  return { text, protectedTerms };
+};
+
+const restoreHotwordBlacklistTerms = (input: string, protectedTerms: string[]) =>
+  protectedTerms.reduce(
+    (text, term, index) => text.split(`__HONEY_HOTWORD_BLACKLIST_${index}__`).join(term),
+    input,
+  );
+
 const applyHotwords = (input: string, hotwords: HotwordEntry[]) =>
   hotwords.reduce((text, hotword) => {
     if (!hotword.enabled || !text) {
       return text;
     }
 
-    return hotword.aliases.reduce(
+    const protectedText = protectHotwordBlacklistTerms(text, hotword.blacklist);
+    const replacedText = hotword.aliases.reduce(
       (nextText, alias) => nextText.split(alias).join(hotword.canonical),
-      text,
+      protectedText.text,
     );
+
+    return restoreHotwordBlacklistTerms(replacedText, protectedText.protectedTerms);
   }, input);
 
 const createRecordId = () => `rec-${Date.now()}`;

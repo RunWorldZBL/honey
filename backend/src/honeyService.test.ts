@@ -568,6 +568,34 @@ async function testModelDiscoveryAndDictationSession() {
   assertEqual((await service.listTranscriptRecords()).some(record => record.id === session.record.id), true, 'dictation record should be archived');
 }
 
+async function testHotwordBlacklistProtectsTermsInDictationOutput() {
+  const service = createHoneyService({
+    asrAdapter: {
+      transcribe: async () => ({
+        text: '请打开阿克米，再检查阿克米表。',
+        durationMs: 700,
+      }),
+    },
+  });
+  await service.saveHotword({
+    id: 'hotword-acme-db',
+    canonical: 'AcmeDB',
+    aliases: ['阿克米'],
+    blacklist: ['阿克米表'],
+    enabled: true,
+  });
+
+  const session = await service.runDirectDictationSession({
+    audioPath: 'D:/tmp/honey-hotword-blacklist.wav',
+  });
+
+  assertEqual(
+    session.record.outputText,
+    '请打开AcmeDB，再检查阿克米表。',
+    'hotword blacklist should protect matching phrases from alias replacement',
+  );
+}
+
 async function testRuntimeHealthReportsLocalDependencies() {
   const dataDir = await mkdtemp(join(tmpdir(), 'honey-runtime-health-'));
   const dataFilePath = join(dataDir, 'honey-data.json');
@@ -996,6 +1024,7 @@ await testPersonaMutations();
 await testTranscriptAndPersonaMemory();
 await testFileTranscriptionTasksAndTrayActions();
 await testModelDiscoveryAndDictationSession();
+await testHotwordBlacklistProtectsTermsInDictationOutput();
 await testRuntimeHealthReportsLocalDependencies();
 await testConfiguredModelDirectoriesDriveRuntimeInventory();
 await testLocalLlmRuntimeController();
