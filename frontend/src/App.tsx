@@ -46,7 +46,7 @@ export default function App() {
     setLatestText(record.outputText);
   }, []);
   useMockDictationHotkey({
-    enabled: windowMode === 'full',
+    enabled: true,
     forcePasteApps,
     hotkey,
     latestText,

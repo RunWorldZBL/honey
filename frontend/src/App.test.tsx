@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listTranscriptRecords = vi.hoisted(() => vi.fn(async () => [
@@ -218,7 +218,7 @@ describe('App', () => {
       });
     });
     expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
-      enabled: false,
+      enabled: true,
     }));
   });
 
@@ -229,13 +229,15 @@ describe('App', () => {
       expect(desktopShell.onWindowModeChange).toHaveBeenCalledOnce();
     });
 
-    desktopShell.emitWindowMode('mini');
+    act(() => {
+      desktopShell.emitWindowMode('mini');
+    });
 
     await waitFor(() => {
       expect(useDictationUiStore.getState().windowMode).toBe('mini');
     });
     expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
-      enabled: false,
+      enabled: true,
     }));
   });
 
