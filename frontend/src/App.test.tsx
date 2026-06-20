@@ -151,6 +151,21 @@ describe('App', () => {
     });
   });
 
+  it('passes the configured trigger threshold to the dictation hotkey hook', async () => {
+    getSettings.mockResolvedValueOnce({
+      ...appSettings,
+      triggerThresholdMs: 320,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+        triggerThresholdMs: 320,
+      }));
+    });
+  });
+
   it('syncs default window mode and persona mode from settings into runtime UI state', async () => {
     getSettings.mockResolvedValueOnce({
       ...appSettings,

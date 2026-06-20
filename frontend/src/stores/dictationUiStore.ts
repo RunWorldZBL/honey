@@ -12,6 +12,7 @@ interface DictationUiStore {
   currentMode: DictationMode;
   hotkey: string;
   triggerMode: AppSettings['triggerMode'];
+  triggerThresholdMs: AppSettings['triggerThresholdMs'];
   selectedPersonaId?: string;
   outputMethod: AppSettings['outputMethod'];
   restoreClipboard: AppSettings['restoreClipboard'];
@@ -24,6 +25,7 @@ interface DictationUiStore {
   setCurrentMode: (mode: DictationMode) => void;
   setHotkey: (hotkey: string) => void;
   setTriggerMode: (triggerMode: AppSettings['triggerMode']) => void;
+  setTriggerThresholdMs: (triggerThresholdMs: AppSettings['triggerThresholdMs']) => void;
   setSelectedPersonaId: (personaId?: string) => void;
   setOutputRuntimeSettings: (settings: {
     outputMethod: AppSettings['outputMethod'];
@@ -40,6 +42,7 @@ export const useDictationUiStore = create<DictationUiStore>((set) => ({
   currentMode: 'direct',
   hotkey: 'CapsLock',
   triggerMode: 'hold-to-talk',
+  triggerThresholdMs: 180,
   selectedPersonaId: 'persona-office',
   outputMethod: 'paste',
   restoreClipboard: true,
@@ -52,6 +55,7 @@ export const useDictationUiStore = create<DictationUiStore>((set) => ({
   setCurrentMode: (currentMode) => set({ currentMode }),
   setHotkey: (hotkey) => set({ hotkey }),
   setTriggerMode: (triggerMode) => set({ triggerMode }),
+  setTriggerThresholdMs: (triggerThresholdMs) => set({ triggerThresholdMs }),
   setSelectedPersonaId: (selectedPersonaId) => set({ selectedPersonaId }),
   setOutputRuntimeSettings: ({ outputMethod, restoreClipboard, forcePasteApps }) => set({
     outputMethod,

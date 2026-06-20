@@ -87,6 +87,7 @@ describe('SettingsPage', () => {
       currentMode: 'direct',
       overlayEnabled: false,
       triggerMode: 'click-to-toggle',
+      triggerThresholdMs: 240,
       outputMethod: 'paste',
       forcePasteApps: [],
     }));
@@ -174,6 +175,20 @@ describe('SettingsPage', () => {
 
     expect(useDictationUiStore.getState()).toMatchObject({
       triggerMode: 'hold-to-talk',
+    });
+  });
+
+  it('syncs saved trigger threshold to the dictation runtime state', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await screen.findByDisplayValue('F9');
+    await user.clear(screen.getByLabelText('触发阈值'));
+    await user.type(screen.getByLabelText('触发阈值'), '360');
+    await user.click(screen.getByRole('button', { name: '保存设置' }));
+
+    expect(useDictationUiStore.getState()).toMatchObject({
+      triggerThresholdMs: 360,
     });
   });
 

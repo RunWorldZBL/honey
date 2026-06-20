@@ -9,6 +9,7 @@ interface UseMockDictationHotkeyOptions {
   enabled: boolean;
   hotkey?: string;
   triggerMode?: 'hold-to-talk' | 'click-to-toggle';
+  triggerThresholdMs?: number;
   latestText?: string;
   forcePasteApps?: string[];
   mockAudioPath?: string;
@@ -23,6 +24,7 @@ export function useMockDictationHotkey({
   enabled,
   hotkey = 'CapsLock',
   triggerMode = 'hold-to-talk',
+  triggerThresholdMs = 0,
   latestText,
   forcePasteApps = [],
   mockAudioPath = 'mock://hold-to-talk.wav',
@@ -33,6 +35,7 @@ export function useMockDictationHotkey({
   onSessionCompleted,
 }: UseMockDictationHotkeyOptions) {
   const pressedRef = useRef(false);
+  const pressedAtRef = useRef<number | undefined>(undefined);
   const timersRef = useRef<number[]>([]);
   const sessionRef = useRef(0);
   const activeSessionRef = useRef<{
@@ -61,6 +64,7 @@ export function useMockDictationHotkey({
       }
 
       pressedRef.current = true;
+      pressedAtRef.current = Date.now();
       sessionRef.current += 1;
       clearTimers();
       const { currentMode, setOverlaySnapshot } = useDictationUiStore.getState();
@@ -97,6 +101,7 @@ export function useMockDictationHotkey({
         }
 
         pressedRef.current = false;
+        pressedAtRef.current = undefined;
         activeSessionRef.current = undefined;
         sessionRef.current += 1;
         setOverlaySnapshot({
@@ -108,12 +113,32 @@ export function useMockDictationHotkey({
       });
     };
 
+    const cancelListening = () => {
+      if (!pressedRef.current) {
+        return;
+      }
+
+      pressedRef.current = false;
+      pressedAtRef.current = undefined;
+      activeSessionRef.current = undefined;
+      sessionRef.current += 1;
+      clearTimers();
+      const { currentMode, setOverlaySnapshot } = useDictationUiStore.getState();
+      setOverlaySnapshot({
+        state: 'idle',
+        mode: currentMode,
+        volumeLevel: 0,
+      });
+      void desktopShellClient.cancelHoldToTalkCapture().catch(() => undefined);
+    };
+
     const finishListening = () => {
       if (!pressedRef.current) {
         return;
       }
 
       pressedRef.current = false;
+      pressedAtRef.current = undefined;
       clearTimers();
       const { currentMode, selectedPersonaId, setOverlaySnapshot } = useDictationUiStore.getState();
       const sessionId = sessionRef.current;
@@ -258,6 +283,12 @@ export function useMockDictationHotkey({
       }
 
       if (triggerMode === 'hold-to-talk') {
+        const pressedAt = pressedAtRef.current;
+        if (pressedAt !== undefined && Date.now() - pressedAt < triggerThresholdMs) {
+          cancelListening();
+          return;
+        }
+
         finishListening();
       }
     };
@@ -284,6 +315,12 @@ export function useMockDictationHotkey({
         }
 
         if (triggerMode === 'hold-to-talk') {
+          const pressedAt = pressedAtRef.current;
+          if (pressedAt !== undefined && Date.now() - pressedAt < triggerThresholdMs) {
+            cancelListening();
+            return;
+          }
+
           finishListening();
         }
       }),
@@ -299,6 +336,7 @@ export function useMockDictationHotkey({
     return () => {
       disposed = true;
       sessionRef.current += 1;
+      pressedAtRef.current = undefined;
       unlistenHoldToTalkHotkey?.();
       void desktopShellClient.unregisterHoldToTalkHotkey().catch(() => undefined);
       void desktopShellClient.cancelHoldToTalkCapture().catch(() => undefined);
@@ -306,5 +344,5 @@ export function useMockDictationHotkey({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [enabled, forcePasteApps, hotkey, latestText, mockAudioPath, onSessionCompleted, outputMethod, personaId, restoreClipboard, sourceApp, triggerMode]);
+  }, [enabled, forcePasteApps, hotkey, latestText, mockAudioPath, onSessionCompleted, outputMethod, personaId, restoreClipboard, sourceApp, triggerMode, triggerThresholdMs]);
 }

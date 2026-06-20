@@ -348,6 +348,37 @@ describe('useMockDictationHotkey', () => {
     });
   });
 
+  it('cancels hold-to-talk when the key is released before the trigger threshold', async () => {
+    renderHook(() => useMockDictationHotkey({
+      enabled: true,
+      triggerThresholdMs: 240,
+    }));
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+    });
+
+    expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('listening');
+
+    await act(async () => {
+      vi.advanceTimersByTime(120);
+    });
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+    });
+
+    await flushAsyncWork();
+
+    expect(cancelHoldToTalkCapture).toHaveBeenCalledOnce();
+    expect(finishHoldToTalkCapture).not.toHaveBeenCalled();
+    expect(runDirectDictationSession).not.toHaveBeenCalled();
+    expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
+      state: 'idle',
+      volumeLevel: 0,
+    });
+  });
+
   it('runs a backend direct dictation session from Tauri global hotkey release', async () => {
     const onSessionCompleted = vi.fn();
     renderHook(() => useMockDictationHotkey({

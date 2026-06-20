@@ -21,6 +21,7 @@ export function SettingsPage() {
   const setOverlayPosition = useDictationUiStore(state => state.setOverlayPosition);
   const setOutputRuntimeSettings = useDictationUiStore(state => state.setOutputRuntimeSettings);
   const setTriggerMode = useDictationUiStore(state => state.setTriggerMode);
+  const setTriggerThresholdMs = useDictationUiStore(state => state.setTriggerThresholdMs);
   const setWindowMode = useDictationUiStore(state => state.setWindowMode);
   const [settings, setSettings] = useState<AppSettings>();
   const [settingsPatch, setSettingsPatch] = useState<UpdateAppSettings>({});
@@ -56,6 +57,7 @@ export function SettingsPage() {
     setSettings(savedSettings);
     setHotkey(savedSettings.hotkey);
     setTriggerMode(savedSettings.triggerMode);
+    setTriggerThresholdMs(savedSettings.triggerThresholdMs);
     setCurrentMode(savedSettings.personaModeEnabled ? savedSettings.defaultMode : 'direct');
     setOverlayEnabled(savedSettings.overlayEnabled);
     setOverlayPosition(savedSettings.overlayPosition);
