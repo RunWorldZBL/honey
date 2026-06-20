@@ -161,14 +161,14 @@ export function useMockDictationHotkey({
             return undefined;
           }
 
-          const uploadedAudio = capture.audioCapture
+          const uploadedAudio = !capture.audioPath && capture.audioCapture
             ? await backendClient.saveAudioCapture(capture.audioCapture)
             : undefined;
           if (sessionId !== sessionRef.current) {
             return undefined;
           }
 
-          const audioPath = uploadedAudio?.audioPath ?? capture.audioPath ?? mockAudioPath;
+          const audioPath = capture.audioPath ?? uploadedAudio?.audioPath ?? mockAudioPath;
           const session = currentMode === 'persona'
             ? await backendClient.runPersonaDictationSession({
               audioPath,

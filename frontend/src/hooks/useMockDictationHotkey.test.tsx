@@ -465,6 +465,38 @@ describe('useMockDictationHotkey', () => {
     });
   });
 
+  it('uses native desktop WAV paths directly without uploading captured bytes', async () => {
+    finishHoldToTalkCapture.mockResolvedValueOnce({
+      ok: true,
+      state: 'captured',
+      hotkey: 'CapsLock',
+      audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+      audioCapture: {
+        fileName: 'hold-to-talk.wav',
+        mimeType: 'audio/wav',
+        base64Data: 'aG9uZXktbmF0aXZlLXdhdg==',
+        durationMs: 900,
+      },
+    });
+
+    renderHook(() => useMockDictationHotkey({
+      enabled: true,
+    }));
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+    });
+
+    await flushAsyncWork();
+
+    expect(saveAudioCapture).not.toHaveBeenCalled();
+    expect(runDirectDictationSession).toHaveBeenCalledWith({
+      audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+      sourceApp: 'Mock 输入框',
+    });
+  });
+
   it('ignores repeated keydown events while the key is held', () => {
     renderHook(() => useMockDictationHotkey({ enabled: true }));
 
