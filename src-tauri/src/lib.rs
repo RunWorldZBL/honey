@@ -12,7 +12,13 @@ use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 #[cfg(not(test))]
 use std::time::Instant;
+#[cfg(not(test))]
+use tauri::menu::MenuBuilder;
+#[cfg(not(test))]
+use tauri::tray::TrayIconBuilder;
 use tauri::Emitter;
+#[cfg(not(test))]
+use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
@@ -23,12 +29,20 @@ static BACKEND_PROCESS: OnceLock<Mutex<BackendProcessState>> = OnceLock::new();
 
 const HOLD_TO_TALK_HOTKEY_EVENT: &str = "honey://hold-to-talk-hotkey";
 #[cfg(not(test))]
+const DESKTOP_WINDOW_MODE_EVENT: &str = "honey://desktop-window-mode";
+#[cfg(not(test))]
 const HOLD_TO_TALK_VOLUME_EVENT: &str = "honey://hold-to-talk-volume";
 const DEFAULT_BACKEND_HOST: &str = "127.0.0.1";
 const DEFAULT_BACKEND_PORT: u16 = 33577;
 const HOLD_TO_TALK_SAMPLE_RATE: u32 = 16_000;
 #[cfg(not(test))]
 const HOLD_TO_TALK_VOLUME_INTERVAL_MS: u64 = 48;
+#[cfg(not(test))]
+const TRAY_OPEN_MAIN_ID: &str = "tray-open-main";
+#[cfg(not(test))]
+const TRAY_OPEN_MINI_ID: &str = "tray-open-mini";
+#[cfg(not(test))]
+const TRAY_QUIT_ID: &str = "tray-quit";
 
 struct HoldToTalkCapture {
     state: String,
@@ -97,6 +111,25 @@ fn registered_hold_to_talk_hotkey() -> &'static Mutex<Option<String>> {
 
 fn backend_process_state() -> &'static Mutex<BackendProcessState> {
     BACKEND_PROCESS.get_or_init(|| Mutex::new(BackendProcessState::default()))
+}
+
+fn set_desktop_window_mode_state(mode: &str) -> Result<String, String> {
+    if mode != "full" && mode != "mini" {
+        return Err("invalid_window_mode".to_string());
+    }
+
+    *desktop_window_mode()
+        .lock()
+        .expect("desktop window mode lock poisoned") = mode.to_string();
+
+    Ok(mode.to_string())
+}
+
+fn desktop_window_mode_json(mode: &str) -> serde_json::Value {
+    serde_json::json!({
+        "ok": true,
+        "mode": mode
+    })
 }
 
 fn shortcut_state_name(state: ShortcutState) -> &'static str {
@@ -769,6 +802,52 @@ fn write_pcm16_wav_file(path: &Path, samples: &[i16], sample_rate: u32) -> Resul
     std::fs::write(path, wav_bytes).map_err(|error| format!("capture_file_unavailable:{error}"))
 }
 
+#[cfg(not(test))]
+fn show_main_window(app: &tauri::AppHandle, mode: &str) {
+    let Ok(mode) = set_desktop_window_mode_state(mode) else {
+        return;
+    };
+
+    let _ = app.emit(
+        DESKTOP_WINDOW_MODE_EVENT,
+        serde_json::json!({ "mode": mode }),
+    );
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg(not(test))]
+fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let menu = MenuBuilder::new(app)
+        .text(TRAY_OPEN_MAIN_ID, "打开 honey")
+        .text(TRAY_OPEN_MINI_ID, "迷你窗口")
+        .separator()
+        .text(TRAY_QUIT_ID, "退出")
+        .build()?;
+    let mut tray = TrayIconBuilder::new()
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .tooltip("honey - 甜美")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            TRAY_OPEN_MAIN_ID => show_main_window(app, "full"),
+            TRAY_OPEN_MINI_ID => show_main_window(app, "mini"),
+            TRAY_QUIT_ID => app.exit(0),
+            _ => {}
+        });
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        tray = tray.icon(icon);
+    }
+
+    tray.build(app)?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -776,6 +855,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let _ = APP_HANDLE.set(app.handle().clone());
+            #[cfg(not(test))]
+            setup_tray(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -803,7 +884,7 @@ fn honey_desktop_capabilities() -> serde_json::Value {
         "backendTransport": "http",
         "backendBaseUrl": default_backend_base_url(),
         "canManageWindow": true,
-        "canUseTray": false,
+        "canUseTray": true,
         "canRegisterGlobalHotkey": true,
         "canInsertText": true,
         "canPreviewHoldToTalk": true,
@@ -930,18 +1011,8 @@ fn honey_get_desktop_window_mode() -> serde_json::Value {
 
 #[tauri::command]
 fn honey_set_desktop_window_mode(mode: String) -> Result<serde_json::Value, String> {
-    if mode != "full" && mode != "mini" {
-        return Err("invalid_window_mode".to_string());
-    }
-
-    *desktop_window_mode()
-        .lock()
-        .expect("desktop window mode lock poisoned") = mode.clone();
-
-    Ok(serde_json::json!({
-        "ok": true,
-        "mode": mode
-    }))
+    let mode = set_desktop_window_mode_state(&mode)?;
+    Ok(desktop_window_mode_json(&mode))
 }
 
 #[tauri::command]
@@ -1276,6 +1347,7 @@ mod tests {
         let capabilities = honey_desktop_capabilities();
 
         assert_eq!(capabilities["canManageBackend"], true);
+        assert_eq!(capabilities["canUseTray"], true);
         assert_eq!(capabilities["backendBaseUrl"], "http://127.0.0.1:33577");
     }
 

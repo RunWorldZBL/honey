@@ -538,6 +538,32 @@ describe('desktopShell', () => {
     expect(invoke).toHaveBeenCalledWith('honey_unregister_hold_to_talk_hotkey');
   });
 
+  it('listens for Tauri desktop window mode changes', async () => {
+    let windowModeHandler: ((event: { payload?: unknown }) => void) | undefined;
+    const unlisten = vi.fn();
+    const listen = vi.fn(async (event: string, handler: (event: { payload?: unknown }) => void) => {
+      windowModeHandler = handler;
+      expect(event).toBe('honey://desktop-window-mode');
+      return unlisten;
+    });
+
+    window.__TAURI__ = { event: { listen } };
+    const client = createDesktopShellClient();
+    const onWindowMode = vi.fn();
+    const dispose = await client.onWindowModeChange(onWindowMode);
+
+    windowModeHandler?.({ payload: { mode: 'mini' } });
+    windowModeHandler?.({ payload: { mode: 'floating' } });
+    windowModeHandler?.({ payload: { mode: 'full' } });
+    dispose();
+
+    expect(listen).toHaveBeenCalledOnce();
+    expect(onWindowMode).toHaveBeenNthCalledWith(1, 'mini');
+    expect(onWindowMode).toHaveBeenNthCalledWith(2, 'full');
+    expect(onWindowMode).toHaveBeenCalledTimes(2);
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
   it('uses the Tauri system text insertion command when Tauri is available', async () => {
     const invoke = vi.fn(async (command: string, args?: unknown) => {
       if (command === 'honey_insert_text') {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { type AppRouteId } from '@/app/navigation';
 import { backendClient } from '@/api/client';
+import { desktopShellClient } from '@/api/desktopShell';
 import { AppShell } from '@/components/AppShell';
 import { DictationOverlay } from '@/components/DictationOverlay';
 import { MiniWindow } from '@/components/MiniWindow';
@@ -55,6 +56,27 @@ export default function App() {
     triggerThresholdMs,
     onSessionCompleted: handleSessionCompleted,
   });
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void desktopShellClient.onWindowModeChange((mode) => {
+      setWindowMode(mode);
+    }).then((dispose) => {
+      if (disposed) {
+        dispose();
+        return;
+      }
+
+      unlisten = dispose;
+    }).catch(() => undefined);
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [setWindowMode]);
 
   useEffect(() => {
     let cancelled = false;

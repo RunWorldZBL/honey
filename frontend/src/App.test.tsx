@@ -43,6 +43,27 @@ const appSettings = vi.hoisted(() => ({
 const getSettings = vi.hoisted(() => vi.fn(async () => appSettings));
 const dictationOverlay = vi.hoisted(() => vi.fn());
 const useMockDictationHotkey = vi.hoisted(() => vi.fn());
+const desktopShell = vi.hoisted(() => {
+  let windowModeHandler: ((mode: 'full' | 'mini') => void) | undefined;
+  const unlistenWindowMode = vi.fn();
+  const onWindowModeChange = vi.fn(async (handler: (mode: 'full' | 'mini') => void) => {
+    windowModeHandler = handler;
+    return unlistenWindowMode;
+  });
+
+  return {
+    emitWindowMode(mode: 'full' | 'mini') {
+      windowModeHandler?.(mode);
+    },
+    reset() {
+      windowModeHandler = undefined;
+      onWindowModeChange.mockClear();
+      unlistenWindowMode.mockClear();
+    },
+    onWindowModeChange,
+    unlistenWindowMode,
+  };
+});
 
 vi.mock('@/api/client', () => ({
   backendClient: {
@@ -52,6 +73,11 @@ vi.mock('@/api/client', () => ({
 }));
 vi.mock('@/hooks/useMockDictationHotkey', () => ({
   useMockDictationHotkey,
+}));
+vi.mock('@/api/desktopShell', () => ({
+  desktopShellClient: {
+    onWindowModeChange: desktopShell.onWindowModeChange,
+  },
 }));
 vi.mock('@/components/AppShell', () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
@@ -105,6 +131,7 @@ describe('App', () => {
     getSettings.mockClear();
     dictationOverlay.mockClear();
     useMockDictationHotkey.mockClear();
+    desktopShell.reset();
   });
 
   it('passes the configured output method to the dictation hotkey hook', async () => {
@@ -181,6 +208,23 @@ describe('App', () => {
         currentMode: 'persona',
         windowMode: 'mini',
       });
+    });
+    expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
+      enabled: false,
+    }));
+  });
+
+  it('syncs desktop shell window mode events into runtime UI state', async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(desktopShell.onWindowModeChange).toHaveBeenCalledOnce();
+    });
+
+    desktopShell.emitWindowMode('mini');
+
+    await waitFor(() => {
+      expect(useDictationUiStore.getState().windowMode).toBe('mini');
     });
     expect(useMockDictationHotkey).toHaveBeenLastCalledWith(expect.objectContaining({
       enabled: false,

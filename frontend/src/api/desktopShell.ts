@@ -69,6 +69,7 @@ export interface DesktopShellClient {
   stopBackendProcess(): Promise<DesktopBackendProcessResult>;
   getWindowMode(): Promise<DesktopWindowMode>;
   setWindowMode(mode: DesktopWindowMode): Promise<{ ok: true; mode: DesktopWindowMode }>;
+  onWindowModeChange(handler: (mode: DesktopWindowMode) => void): Promise<HoldToTalkHotkeyUnlisten>;
   registerHoldToTalkHotkey(input: { hotkey: string }): Promise<RegisterHoldToTalkHotkeyResult>;
   unregisterHoldToTalkHotkey(): Promise<UnregisterHoldToTalkHotkeyResult>;
   onHoldToTalkHotkey(handler: (event: HoldToTalkHotkeyEvent) => void): Promise<HoldToTalkHotkeyUnlisten>;
@@ -98,6 +99,7 @@ declare global {
   }
 }
 
+const desktopWindowModeEventName = 'honey://desktop-window-mode';
 const holdToTalkHotkeyEventName = 'honey://hold-to-talk-hotkey';
 const holdToTalkVolumeEventName = 'honey://hold-to-talk-volume';
 
@@ -530,6 +532,15 @@ const parseHoldToTalkHotkeyEvent = (value: unknown): HoldToTalkHotkeyEvent | und
   };
 };
 
+const parseDesktopWindowModeEvent = (value: unknown): DesktopWindowMode | undefined => {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const event = value as Partial<{ mode: unknown }>;
+  return isDesktopWindowMode(event.mode) ? event.mode : undefined;
+};
+
 const parseHoldToTalkVolumeLevel = (value: unknown) => {
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -630,6 +641,19 @@ export function createDesktopShellClient(): DesktopShellClient {
         ok: true,
         mode: result.mode,
       };
+    },
+    async onWindowModeChange(handler) {
+      const listen = getTauriListen();
+      if (!listen) {
+        return () => undefined;
+      }
+
+      return listen(desktopWindowModeEventName, (event) => {
+        const mode = parseDesktopWindowModeEvent(event.payload);
+        if (mode) {
+          handler(mode);
+        }
+      });
     },
     async registerHoldToTalkHotkey(input) {
       const invoke = getTauriInvoke();
