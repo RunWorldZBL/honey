@@ -33,6 +33,7 @@ const getSettings = vi.hoisted(() => vi.fn(async () => ({
 
 const listTrayActions = vi.hoisted(() => vi.fn(async () => []));
 const setWindowMode = vi.hoisted(() => vi.fn(async (mode: 'full' | 'mini') => ({ ok: true as const, mode })));
+const setStartupEnabled = vi.hoisted(() => vi.fn(async (enabled: boolean) => ({ ok: true as const, enabled })));
 const setTrayEnabled = vi.hoisted(() => vi.fn(async (enabled: boolean) => ({ ok: true as const, enabled })));
 const updateSettings = vi.hoisted(() => vi.fn(async (patch) => ({
   defaultMode: 'direct',
@@ -74,6 +75,7 @@ vi.mock('@/api/client', () => ({
 vi.mock('@/api/desktopShell', () => ({
   desktopShellClient: {
     setWindowMode,
+    setStartupEnabled,
     setTrayEnabled,
   },
 }));
@@ -97,6 +99,7 @@ describe('SettingsPage', () => {
     updateSettings.mockClear();
     listTrayActions.mockClear();
     setWindowMode.mockClear();
+    setStartupEnabled.mockClear();
     setTrayEnabled.mockClear();
   });
 
@@ -233,6 +236,20 @@ describe('SettingsPage', () => {
       trayEnabled: true,
     });
     expect(setTrayEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it('syncs saved startup preference to the desktop shell', async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await screen.findByDisplayValue('F9');
+    await user.click(screen.getByLabelText('开机启动'));
+    await user.click(screen.getByRole('button', { name: '保存设置' }));
+
+    expect(updateSettings).toHaveBeenCalledWith({
+      startupEnabled: false,
+    });
+    expect(setStartupEnabled).toHaveBeenCalledWith(false);
   });
 
   it('applies desktop window mode immediately through the desktop shell', async () => {

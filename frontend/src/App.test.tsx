@@ -46,6 +46,7 @@ const useMockDictationHotkey = vi.hoisted(() => vi.fn());
 const desktopShell = vi.hoisted(() => {
   let windowModeHandler: ((mode: 'full' | 'mini') => void) | undefined;
   const unlistenWindowMode = vi.fn();
+  const setStartupEnabled = vi.fn(async (enabled: boolean) => ({ ok: true as const, enabled }));
   const setTrayEnabled = vi.fn(async (enabled: boolean) => ({ ok: true as const, enabled }));
   const onWindowModeChange = vi.fn(async (handler: (mode: 'full' | 'mini') => void) => {
     windowModeHandler = handler;
@@ -60,9 +61,11 @@ const desktopShell = vi.hoisted(() => {
       windowModeHandler = undefined;
       onWindowModeChange.mockClear();
       unlistenWindowMode.mockClear();
+      setStartupEnabled.mockClear();
       setTrayEnabled.mockClear();
     },
     onWindowModeChange,
+    setStartupEnabled,
     setTrayEnabled,
     unlistenWindowMode,
   };
@@ -80,6 +83,7 @@ vi.mock('@/hooks/useMockDictationHotkey', () => ({
 vi.mock('@/api/desktopShell', () => ({
   desktopShellClient: {
     onWindowModeChange: desktopShell.onWindowModeChange,
+    setStartupEnabled: desktopShell.setStartupEnabled,
     setTrayEnabled: desktopShell.setTrayEnabled,
   },
 }));
@@ -245,6 +249,19 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(desktopShell.setTrayEnabled).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it('syncs startup preference from settings into the desktop shell', async () => {
+    getSettings.mockResolvedValueOnce({
+      ...appSettings,
+      startupEnabled: true,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(desktopShell.setStartupEnabled).toHaveBeenCalledWith(true);
     });
   });
 

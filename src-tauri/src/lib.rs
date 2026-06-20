@@ -19,6 +19,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::Emitter;
 #[cfg(not(test))]
 use tauri::Manager;
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
@@ -27,6 +28,7 @@ static HOLD_TO_TALK_CAPTURE: OnceLock<Mutex<HoldToTalkCapture>> = OnceLock::new(
 static REGISTERED_HOLD_TO_TALK_HOTKEY: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BACKEND_PROCESS: OnceLock<Mutex<BackendProcessState>> = OnceLock::new();
 static TRAY_ENABLED: OnceLock<Mutex<bool>> = OnceLock::new();
+static STARTUP_ENABLED: OnceLock<Mutex<bool>> = OnceLock::new();
 
 const HOLD_TO_TALK_HOTKEY_EVENT: &str = "honey://hold-to-talk-hotkey";
 #[cfg(not(test))]
@@ -118,6 +120,10 @@ fn tray_enabled() -> &'static Mutex<bool> {
     TRAY_ENABLED.get_or_init(|| Mutex::new(true))
 }
 
+fn startup_enabled() -> &'static Mutex<bool> {
+    STARTUP_ENABLED.get_or_init(|| Mutex::new(false))
+}
+
 fn should_hide_window_on_close(window_label: &str, tray_enabled: bool) -> bool {
     window_label == "main" && tray_enabled
 }
@@ -139,6 +145,21 @@ fn desktop_window_mode_json(mode: &str) -> serde_json::Value {
         "ok": true,
         "mode": mode
     })
+}
+
+fn startup_enabled_json(enabled: bool) -> serde_json::Value {
+    serde_json::json!({
+        "ok": true,
+        "enabled": enabled
+    })
+}
+
+fn set_startup_enabled_state(enabled: bool) -> serde_json::Value {
+    *startup_enabled()
+        .lock()
+        .expect("startup enabled lock poisoned") = enabled;
+
+    startup_enabled_json(enabled)
 }
 
 fn shortcut_state_name(state: ShortcutState) -> &'static str {
@@ -860,6 +881,10 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--background".into()]),
+        ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| {
@@ -885,6 +910,7 @@ pub fn run() {
             honey_get_desktop_window_mode,
             honey_set_desktop_window_mode,
             honey_set_tray_enabled,
+            honey_set_startup_enabled,
             honey_register_hold_to_talk_hotkey,
             honey_unregister_hold_to_talk_hotkey,
             honey_start_hold_to_talk_capture,
@@ -1042,6 +1068,25 @@ fn honey_set_tray_enabled(enabled: bool) -> Result<serde_json::Value, String> {
         "ok": true,
         "enabled": enabled
     }))
+}
+
+#[tauri::command]
+fn honey_set_startup_enabled(
+    app: tauri::AppHandle,
+    enabled: bool,
+) -> Result<serde_json::Value, String> {
+    let autolaunch = app.autolaunch();
+    if enabled {
+        autolaunch
+            .enable()
+            .map_err(|error| format!("startup_enable_failed:{error}"))?;
+    } else {
+        autolaunch
+            .disable()
+            .map_err(|error| format!("startup_disable_failed:{error}"))?;
+    }
+
+    Ok(set_startup_enabled_state(enabled))
 }
 
 #[tauri::command]
@@ -1389,6 +1434,17 @@ mod tests {
         let enabled = honey_set_tray_enabled(true).expect("tray preference should be valid");
         assert_eq!(enabled["ok"], true);
         assert_eq!(enabled["enabled"], true);
+    }
+
+    #[test]
+    fn stores_startup_enabled_preference() {
+        let enabled = set_startup_enabled_state(true);
+        assert_eq!(enabled["ok"], true);
+        assert_eq!(enabled["enabled"], true);
+
+        let disabled = set_startup_enabled_state(false);
+        assert_eq!(disabled["ok"], true);
+        assert_eq!(disabled["enabled"], false);
     }
 
     #[test]

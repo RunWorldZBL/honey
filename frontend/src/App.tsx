@@ -95,6 +95,7 @@ export default function App() {
         setOverlayPosition(settings.overlayPosition);
         setWindowMode(settings.defaultWindowMode);
         void desktopShellClient.setTrayEnabled(settings.trayEnabled).catch(() => undefined);
+        void desktopShellClient.setStartupEnabled(settings.startupEnabled).catch(() => undefined);
         setOutputRuntimeSettings({
           outputMethod: settings.outputMethod,
           restoreClipboard: settings.restoreClipboard,

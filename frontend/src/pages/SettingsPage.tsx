@@ -62,6 +62,7 @@ export function SettingsPage() {
     setOverlayEnabled(savedSettings.overlayEnabled);
     setOverlayPosition(savedSettings.overlayPosition);
     await desktopShellClient.setTrayEnabled(savedSettings.trayEnabled);
+    await desktopShellClient.setStartupEnabled(savedSettings.startupEnabled);
     setOutputRuntimeSettings({
       outputMethod: savedSettings.outputMethod,
       restoreClipboard: savedSettings.restoreClipboard,
