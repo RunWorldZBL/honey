@@ -99,6 +99,7 @@ declare global {
 }
 
 const holdToTalkHotkeyEventName = 'honey://hold-to-talk-hotkey';
+const holdToTalkVolumeEventName = 'honey://hold-to-talk-volume';
 
 const fallbackCapabilities: DesktopShellCapabilities = {
   backendTransport: 'http',
@@ -136,6 +137,7 @@ interface BrowserAudioCaptureSession {
 }
 
 let activeBrowserAudioCapture: BrowserAudioCaptureSession | undefined;
+let activeNativeVolumeUnlisten: HoldToTalkHotkeyUnlisten | undefined;
 
 const recorderMimeTypeCandidates = [
   'audio/webm;codecs=opus',
@@ -365,6 +367,11 @@ const finishBrowserAudioCapture = async (): Promise<AudioCaptureUploadInput | un
 const getTauriInvoke = () => window.__TAURI__?.core?.invoke;
 const getTauriListen = () => window.__TAURI__?.event?.listen;
 
+const stopNativeVolumeListener = () => {
+  activeNativeVolumeUnlisten?.();
+  activeNativeVolumeUnlisten = undefined;
+};
+
 const isDesktopWindowMode = (value: unknown): value is DesktopWindowMode => value === 'full' || value === 'mini';
 const isHoldToTalkCaptureState = (value: unknown): value is HoldToTalkCaptureState =>
   value === 'listening' || value === 'captured' || value === 'cancelled';
@@ -523,6 +530,34 @@ const parseHoldToTalkHotkeyEvent = (value: unknown): HoldToTalkHotkeyEvent | und
   };
 };
 
+const parseHoldToTalkVolumeLevel = (value: unknown) => {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const event = value as Partial<{ volumeLevel: unknown }>;
+  if (typeof event.volumeLevel !== 'number' || Number.isNaN(event.volumeLevel)) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.min(1, event.volumeLevel));
+};
+
+const startNativeVolumeListener = async (onVolumeLevel?: HoldToTalkVolumeHandler) => {
+  stopNativeVolumeListener();
+  const listen = getTauriListen();
+  if (!listen || !onVolumeLevel) {
+    return;
+  }
+
+  activeNativeVolumeUnlisten = await listen(holdToTalkVolumeEventName, (event) => {
+    const volumeLevel = parseHoldToTalkVolumeLevel(event.payload);
+    if (volumeLevel !== undefined) {
+      onVolumeLevel(volumeLevel);
+    }
+  });
+};
+
 const parseDesktopTextInsertionResult = (value: unknown): DesktopTextInsertionResult => {
   if (!value || typeof value !== 'object') {
     throw new Error('Invalid text insertion response');
@@ -632,7 +667,13 @@ export function createDesktopShellClient(): DesktopShellClient {
     async startHoldToTalkCapture(input) {
       const invoke = getTauriInvoke();
       if (invoke) {
-        return parseHoldToTalkCaptureResult(await invoke('honey_start_hold_to_talk_capture', { hotkey: input.hotkey }));
+        await startNativeVolumeListener(input.onVolumeLevel);
+        try {
+          return parseHoldToTalkCaptureResult(await invoke('honey_start_hold_to_talk_capture', { hotkey: input.hotkey }));
+        } catch (error) {
+          stopNativeVolumeListener();
+          throw error;
+        }
       }
 
       await startBrowserAudioCapture(input.hotkey, input.onVolumeLevel);
@@ -641,7 +682,11 @@ export function createDesktopShellClient(): DesktopShellClient {
     async finishHoldToTalkCapture() {
       const invoke = getTauriInvoke();
       if (invoke) {
-        return parseHoldToTalkCaptureResult(await invoke('honey_finish_hold_to_talk_capture'));
+        try {
+          return parseHoldToTalkCaptureResult(await invoke('honey_finish_hold_to_talk_capture'));
+        } finally {
+          stopNativeVolumeListener();
+        }
       }
 
       const audioCapture = await finishBrowserAudioCapture();
@@ -657,7 +702,11 @@ export function createDesktopShellClient(): DesktopShellClient {
     async cancelHoldToTalkCapture() {
       const invoke = getTauriInvoke();
       if (invoke) {
-        return parseHoldToTalkCaptureResult(await invoke('honey_cancel_hold_to_talk_capture'));
+        try {
+          return parseHoldToTalkCaptureResult(await invoke('honey_cancel_hold_to_talk_capture'));
+        } finally {
+          stopNativeVolumeListener();
+        }
       }
 
       cancelBrowserAudioCapture();

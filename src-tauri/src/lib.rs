@@ -10,18 +10,25 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::mpsc;
 #[cfg(not(test))]
 use std::thread::{self, JoinHandle};
+#[cfg(not(test))]
+use std::time::Instant;
 use tauri::Emitter;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 static DESKTOP_WINDOW_MODE: OnceLock<Mutex<String>> = OnceLock::new();
 static HOLD_TO_TALK_CAPTURE: OnceLock<Mutex<HoldToTalkCapture>> = OnceLock::new();
 static REGISTERED_HOLD_TO_TALK_HOTKEY: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BACKEND_PROCESS: OnceLock<Mutex<BackendProcessState>> = OnceLock::new();
 
 const HOLD_TO_TALK_HOTKEY_EVENT: &str = "honey://hold-to-talk-hotkey";
+#[cfg(not(test))]
+const HOLD_TO_TALK_VOLUME_EVENT: &str = "honey://hold-to-talk-volume";
 const DEFAULT_BACKEND_HOST: &str = "127.0.0.1";
 const DEFAULT_BACKEND_PORT: u16 = 33577;
 const HOLD_TO_TALK_SAMPLE_RATE: u32 = 16_000;
+#[cfg(not(test))]
+const HOLD_TO_TALK_VOLUME_INTERVAL_MS: u64 = 48;
 
 struct HoldToTalkCapture {
     state: String,
@@ -39,6 +46,12 @@ struct NativeAudioRecorder {
     stop_sender: mpsc::Sender<()>,
     #[cfg(not(test))]
     thread: JoinHandle<Result<(), String>>,
+}
+
+#[cfg(not(test))]
+struct NativeVolumeReporter {
+    app: tauri::AppHandle,
+    last_emit: Instant,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -453,27 +466,39 @@ fn run_native_audio_capture(
     let stream = match sample_format {
         cpal::SampleFormat::F32 => {
             let callback_samples = Arc::clone(&samples);
+            let mut volume_reporter = create_native_volume_reporter();
             device.build_input_stream(
                 &stream_config,
-                move |data: &[f32], _| append_f32_samples(data, &callback_samples),
+                move |data: &[f32], _| {
+                    let (sum_squares, sample_count) = append_f32_samples(data, &callback_samples);
+                    emit_native_volume_level(&mut volume_reporter, sum_squares, sample_count);
+                },
                 native_audio_error_callback,
                 None,
             )
         }
         cpal::SampleFormat::I16 => {
             let callback_samples = Arc::clone(&samples);
+            let mut volume_reporter = create_native_volume_reporter();
             device.build_input_stream(
                 &stream_config,
-                move |data: &[i16], _| append_i16_samples(data, &callback_samples),
+                move |data: &[i16], _| {
+                    let (sum_squares, sample_count) = append_i16_samples(data, &callback_samples);
+                    emit_native_volume_level(&mut volume_reporter, sum_squares, sample_count);
+                },
                 native_audio_error_callback,
                 None,
             )
         }
         cpal::SampleFormat::U16 => {
             let callback_samples = Arc::clone(&samples);
+            let mut volume_reporter = create_native_volume_reporter();
             device.build_input_stream(
                 &stream_config,
-                move |data: &[u16], _| append_u16_samples(data, &callback_samples),
+                move |data: &[u16], _| {
+                    let (sum_squares, sample_count) = append_u16_samples(data, &callback_samples);
+                    emit_native_volume_level(&mut volume_reporter, sum_squares, sample_count);
+                },
                 native_audio_error_callback,
                 None,
             )
@@ -510,33 +535,113 @@ fn native_audio_error_callback(error: cpal::StreamError) {
     eprintln!("honey native audio capture error: {error}");
 }
 
-#[cfg(not(test))]
-fn append_f32_samples(input: &[f32], samples: &Arc<Mutex<Vec<f32>>>) {
-    if let Ok(mut output) = samples.lock() {
-        output.extend(input.iter().map(|sample| sample.clamp(-1.0, 1.0)));
+fn rms_volume_level_from_sum(sum_squares: f32, sample_count: usize) -> f32 {
+    if sample_count == 0 || sum_squares <= 0.0 {
+        return 0.0;
     }
+
+    (sum_squares / sample_count as f32).sqrt().clamp(0.0, 1.0)
 }
 
 #[cfg(not(test))]
-fn append_i16_samples(input: &[i16], samples: &Arc<Mutex<Vec<f32>>>) {
-    if let Ok(mut output) = samples.lock() {
-        output.extend(
-            input
-                .iter()
-                .map(|sample| f32::from(*sample) / f32::from(i16::MAX)),
-        );
-    }
+fn create_native_volume_reporter() -> Option<NativeVolumeReporter> {
+    let now = Instant::now();
+    APP_HANDLE.get().cloned().map(|app| NativeVolumeReporter {
+        app,
+        last_emit: now
+            .checked_sub(Duration::from_millis(HOLD_TO_TALK_VOLUME_INTERVAL_MS))
+            .unwrap_or(now),
+    })
 }
 
 #[cfg(not(test))]
-fn append_u16_samples(input: &[u16], samples: &Arc<Mutex<Vec<f32>>>) {
-    if let Ok(mut output) = samples.lock() {
-        output.extend(
-            input
-                .iter()
-                .map(|sample| (f32::from(*sample) - 32768.0) / 32768.0),
-        );
+fn emit_native_volume_level(
+    reporter: &mut Option<NativeVolumeReporter>,
+    sum_squares: f32,
+    sample_count: usize,
+) {
+    let Some(reporter) = reporter.as_mut() else {
+        return;
+    };
+    let now = Instant::now();
+    if now.duration_since(reporter.last_emit)
+        < Duration::from_millis(HOLD_TO_TALK_VOLUME_INTERVAL_MS)
+    {
+        return;
     }
+
+    reporter.last_emit = now;
+    let volume_level = rms_volume_level_from_sum(sum_squares, sample_count);
+    let _ = reporter.app.emit(
+        HOLD_TO_TALK_VOLUME_EVENT,
+        serde_json::json!({ "volumeLevel": volume_level }),
+    );
+}
+
+#[cfg(not(test))]
+fn append_f32_samples(input: &[f32], samples: &Arc<Mutex<Vec<f32>>>) -> (f32, usize) {
+    let mut sum_squares = 0.0;
+    let mut sample_count = 0;
+    if let Ok(mut output) = samples.lock() {
+        for sample in input {
+            let normalized = sample.clamp(-1.0, 1.0);
+            sum_squares += normalized * normalized;
+            sample_count += 1;
+            output.push(normalized);
+        }
+    } else {
+        for sample in input {
+            let normalized = sample.clamp(-1.0, 1.0);
+            sum_squares += normalized * normalized;
+            sample_count += 1;
+        }
+    }
+
+    (sum_squares, sample_count)
+}
+
+#[cfg(not(test))]
+fn append_i16_samples(input: &[i16], samples: &Arc<Mutex<Vec<f32>>>) -> (f32, usize) {
+    let mut sum_squares = 0.0;
+    let mut sample_count = 0;
+    if let Ok(mut output) = samples.lock() {
+        for sample in input {
+            let normalized = (f32::from(*sample) / f32::from(i16::MAX)).clamp(-1.0, 1.0);
+            sum_squares += normalized * normalized;
+            sample_count += 1;
+            output.push(normalized);
+        }
+    } else {
+        for sample in input {
+            let normalized = (f32::from(*sample) / f32::from(i16::MAX)).clamp(-1.0, 1.0);
+            sum_squares += normalized * normalized;
+            sample_count += 1;
+        }
+    }
+
+    (sum_squares, sample_count)
+}
+
+#[cfg(not(test))]
+fn append_u16_samples(input: &[u16], samples: &Arc<Mutex<Vec<f32>>>) -> (f32, usize) {
+    let mut sum_squares = 0.0;
+    let mut sample_count = 0;
+    if let Ok(mut output) = samples.lock() {
+        for sample in input {
+            let normalized = ((f32::from(*sample) - 32768.0) / 32768.0).clamp(-1.0, 1.0);
+            sum_squares += normalized * normalized;
+            sample_count += 1;
+            output.push(normalized);
+        }
+    } else {
+        for sample in input {
+            let normalized = ((f32::from(*sample) - 32768.0) / 32768.0).clamp(-1.0, 1.0);
+            sum_squares += normalized * normalized;
+            sample_count += 1;
+        }
+    }
+
+    (sum_squares, sample_count)
 }
 
 fn finish_native_audio_recorder(recorder: NativeAudioRecorder) -> Result<(), String> {
@@ -669,6 +774,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            let _ = APP_HANDLE.set(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             honey_desktop_capabilities,
             honey_get_backend_process_status,
@@ -1085,6 +1194,14 @@ mod tests {
     fn maps_global_shortcut_state_for_hold_to_talk_events() {
         assert_eq!(shortcut_state_name(ShortcutState::Pressed), "pressed");
         assert_eq!(shortcut_state_name(ShortcutState::Released), "released");
+    }
+
+    #[test]
+    fn calculates_hold_to_talk_volume_level() {
+        assert_eq!(rms_volume_level_from_sum(0.0, 0), 0.0);
+        assert_eq!(rms_volume_level_from_sum(0.0, 3), 0.0);
+        assert!((rms_volume_level_from_sum(0.25, 1) - 0.5).abs() < f32::EPSILON);
+        assert_eq!(rms_volume_level_from_sum(9.0, 1), 1.0);
     }
 
     #[test]

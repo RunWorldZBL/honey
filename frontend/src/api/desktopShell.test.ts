@@ -427,6 +427,58 @@ describe('desktopShell', () => {
     expect(invoke).toHaveBeenCalledWith('honey_finish_hold_to_talk_capture');
   });
 
+  it('subscribes to Tauri native capture volume events while recording', async () => {
+    let volumeHandler: ((event: { payload?: unknown }) => void) | undefined;
+    const unlisten = vi.fn();
+    const invoke = vi.fn(async (command: string, args?: unknown) => {
+      if (command === 'honey_start_hold_to_talk_capture') {
+        return {
+          ok: true,
+          state: 'listening',
+          hotkey: (args as { hotkey: string }).hotkey,
+          audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+        };
+      }
+
+      if (command === 'honey_finish_hold_to_talk_capture') {
+        return {
+          ok: true,
+          state: 'captured',
+          hotkey: 'CapsLock',
+          audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+        };
+      }
+
+      throw new Error(`unexpected command ${command}`);
+    });
+    const listen = vi.fn(async (event: string, handler: (event: { payload?: unknown }) => void) => {
+      volumeHandler = handler;
+      expect(event).toBe('honey://hold-to-talk-volume');
+      return unlisten;
+    });
+
+    window.__TAURI__ = {
+      core: { invoke },
+      event: { listen },
+    };
+    const client = createDesktopShellClient();
+    const onVolumeLevel = vi.fn();
+
+    await client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel });
+    volumeHandler?.({ payload: { volumeLevel: 0.42 } });
+    volumeHandler?.({ payload: { volumeLevel: 2 } });
+    volumeHandler?.({ payload: { volumeLevel: -1 } });
+    volumeHandler?.({ payload: { volumeLevel: 'loud' } });
+    await client.finishHoldToTalkCapture();
+
+    expect(listen).toHaveBeenCalledOnce();
+    expect(onVolumeLevel).toHaveBeenNthCalledWith(1, 0.42);
+    expect(onVolumeLevel).toHaveBeenNthCalledWith(2, 1);
+    expect(onVolumeLevel).toHaveBeenNthCalledWith(3, 0);
+    expect(onVolumeLevel).toHaveBeenCalledTimes(3);
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
   it('registers Tauri global hold-to-talk hotkeys and listens for pressed state changes', async () => {
     let hotkeyHandler: ((event: { payload?: unknown }) => void) | undefined;
     const unlisten = vi.fn();

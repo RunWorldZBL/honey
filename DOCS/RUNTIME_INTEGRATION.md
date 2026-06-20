@@ -45,6 +45,14 @@ content-type: application/json
 
 如果用户在设置中关闭“保存录音”，上传音频仍会先落成本地临时文件供语音转文字模型读取，但直接转写或人设模式会话结束后会删除该文件，并且历史记录不保存 `audioPath`。删除范围只限 `localDataPath/audio-captures` 下由 honey 上传的文件，不会删除用户传入的任意外部路径。
 
+实时按键说话链路优先使用 `16kHz / mono / PCM16 WAV`。麦克风采集得到的原始数据本质上是 PCM，WAV 只是为 PCM 增加轻量文件头，能让链路保持为“麦克风 PCM -> 重采样 -> 语音转文字模型”。MP3 不作为实时录音主格式，因为它会额外引入编码、解码、依赖、延迟和 CPU 开销，而语音转文字模型最终仍需要 PCM 波形输入。
+
+MP3 可以作为后续能力支持，但定位不同：
+
+- 文件转录导入：支持 `.wav`、`.mp3`、`.m4a`、`.flac` 等用户已有文件，进入语音转文字模型前统一解码为 `16kHz / mono / PCM`。
+- 历史音频归档：如果用户选择保存录音，后续可提供 MP3、Opus 或 FLAC 等压缩格式作为异步归档选项。
+- 实时上屏：继续以 PCM/WAV 为主链路，优先保证低延迟、稳定性和跨平台可控性。
+
 ### 2. WebView 麦克风录音
 
 `frontend/src/api/desktopShell.ts` 已提供基于浏览器 `MediaRecorder` 的录音适配：
@@ -265,7 +273,7 @@ Fun-ASR-Nano 仍保留命令式 runner 入口，方便单独调试或外部进�
 $env:HONEY_ASR_COMMAND = 'pnpm --filter backend asr:fun-nano'
 ```
 
-当前 `asr:fun-nano` 已能完成模型文件检查、`onnxruntime-node` 依赖探测、`ffmpeg` 音频解码器探测、stdin JSON 解析、16k mono PCM 解码、Fun-ASR-Nano Encoder ONNX 推理、CTC ONNX 推理和 tokens 直出解码。
+当前 `asr:fun-nano` 已能完成模型文件检查、`onnxruntime-node` 依赖探测、`ffmpeg` 音频解码器探测、stdin JSON 解析、16k mono PCM/WAV 解码、Fun-ASR-Nano Encoder ONNX 推理、CTC ONNX 推理和 tokens 直出解码。
 
 当前实现的是 CTC 直出路径：
 
@@ -273,7 +281,7 @@ $env:HONEY_ASR_COMMAND = 'pnpm --filter backend asr:fun-nano'
 audio file -> ffmpeg or WAV decoder -> 16k mono PCM -> Encoder-Adaptor.int8.onnx -> CTC.int8.onnx -> tokens.txt CTC collapse
 ```
 
-WebView `MediaRecorder` 录出来通常是 `webm/opus`，需要本机 PATH 里有 `ffmpeg`，或者显式设置：
+Tauri 原生录音会写出 `16kHz / mono / PCM16 WAV`，实时听写主链路不依赖 MP3 编解码。WebView `MediaRecorder` fallback 录出来通常是 `webm/opus`，文件转录导入 MP3/M4A/FLAC 等压缩格式时也需要本机 PATH 里有 `ffmpeg`，或者显式设置：
 
 ```powershell
 $env:HONEY_FFMPEG_PATH = 'D:\app\DownVideo\ffmpeg.exe'
