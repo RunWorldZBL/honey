@@ -376,6 +376,73 @@ async function testPersonaDictationClearsUploadedAudioWhenSaveAudioIsDisabled() 
   }
 }
 
+async function testDirectDictationSkipsArchiveWhenSaveHistoryIsDisabled() {
+  const service = createHoneyService({
+    asrAdapter: {
+      transcribe: async () => ({
+        text: '这次只上屏不要保存。',
+        durationMs: 700,
+      }),
+    },
+  });
+  const beforeRecords = await service.listTranscriptRecords();
+
+  await service.updateSettings({ saveHistory: false });
+
+  const session = await service.runDirectDictationSession({
+    audioPath: 'D:/tmp/honey-direct-no-history.wav',
+    sourceApp: '无历史输入框',
+  });
+  const afterRecords = await service.listTranscriptRecords();
+
+  assertEqual(session.record.status, 'completed', 'direct dictation should still return a completed record when history is disabled');
+  assertEqual(session.record.outputText, '这次只上屏不要保存。', 'direct dictation should still return output text when history is disabled');
+  assertEqual(afterRecords.some(record => record.id === session.record.id), false, 'direct dictation should not archive a record when history is disabled');
+  assertEqual(afterRecords.length, beforeRecords.length, 'direct dictation should leave transcript history unchanged when history is disabled');
+}
+
+async function testPersonaDictationSkipsArchiveWhenSaveHistoryIsDisabled() {
+  const service = createHoneyService({
+    asrAdapter: {
+      transcribe: async () => ({
+        text: '怎么今天加班啊？',
+        durationMs: 1000,
+      }),
+    },
+    personaRewriteAdapter: {
+      rewrite: async () => ({
+        text: '今天的工作安排是否需要延长到下班后？',
+        latencyMs: 120,
+      }),
+    },
+  });
+  const beforeRecords = await service.listTranscriptRecords();
+
+  await service.updateSettings({ saveHistory: false });
+  await service.savePersona({
+    id: 'persona-no-history',
+    name: '无历史人设',
+    triggerAliases: ['无历史'],
+    description: '验证关闭历史记录时，人设模式只返回结果不上档。',
+    prompt: '改写成稳妥表达。',
+    outputMode: 'typing',
+    enabled: true,
+    keepContext: false,
+  });
+
+  const session = await service.runPersonaDictationSession({
+    audioPath: 'D:/tmp/honey-persona-no-history.wav',
+    sourceApp: '无历史人设输入框',
+    personaId: 'persona-no-history',
+  });
+  const afterRecords = await service.listTranscriptRecords();
+
+  assertEqual(session.record.status, 'completed', 'persona dictation should still return a completed record when history is disabled');
+  assertEqual(session.record.outputText, '今天的工作安排是否需要延长到下班后？', 'persona dictation should still return rewritten output when history is disabled');
+  assertEqual(afterRecords.some(record => record.id === session.record.id), false, 'persona dictation should not archive a record when history is disabled');
+  assertEqual(afterRecords.length, beforeRecords.length, 'persona dictation should leave transcript history unchanged when history is disabled');
+}
+
 async function testPersonaMutations() {
   const service = createHoneyService();
   const persona: PersonaProfile = {
@@ -923,6 +990,8 @@ await testFailedPersistenceDoesNotMutateMemory();
 await testAudioCaptureUploadWritesLocalAudioFile();
 await testDirectDictationClearsUploadedAudioWhenSaveAudioIsDisabled();
 await testPersonaDictationClearsUploadedAudioWhenSaveAudioIsDisabled();
+await testDirectDictationSkipsArchiveWhenSaveHistoryIsDisabled();
+await testPersonaDictationSkipsArchiveWhenSaveHistoryIsDisabled();
 await testPersonaMutations();
 await testTranscriptAndPersonaMemory();
 await testFileTranscriptionTasksAndTrayActions();

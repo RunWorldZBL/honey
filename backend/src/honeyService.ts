@@ -351,6 +351,13 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
     personas = clone(nextData.personas);
     settings = clone(nextData.settings);
   };
+  const archiveTranscriptRecord = (record: TranscriptRecord) => {
+    if (!settings.saveHistory) {
+      return;
+    }
+
+    commitLocalData(createPersistedData({ records: [record, ...transcriptRecords] }));
+  };
 
   return {
     async getSettings() {
@@ -558,7 +565,7 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
           status: 'completed',
         };
 
-        commitLocalData(createPersistedData({ records: [record, ...transcriptRecords] }));
+        archiveTranscriptRecord(record);
         await deleteUploadedAudioIfDiscarded(input.audioPath, settings);
 
         return {
@@ -578,7 +585,7 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
           status: 'failed',
         };
 
-        commitLocalData(createPersistedData({ records: [record, ...transcriptRecords] }));
+        archiveTranscriptRecord(record);
         await deleteUploadedAudioIfDiscarded(input.audioPath, settings);
 
         return {
@@ -632,7 +639,7 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
           status: 'completed',
         };
 
-        commitLocalData(createPersistedData({ records: [record, ...transcriptRecords] }));
+        archiveTranscriptRecord(record);
         await deleteUploadedAudioIfDiscarded(input.audioPath, settings);
 
         return {
@@ -653,7 +660,7 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
           status: 'failed',
         };
 
-        commitLocalData(createPersistedData({ records: [record, ...transcriptRecords] }));
+        archiveTranscriptRecord(record);
         await deleteUploadedAudioIfDiscarded(input.audioPath, settings);
 
         return {
