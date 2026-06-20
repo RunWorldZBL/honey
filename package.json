@@ -1,0 +1,27 @@
+{
+  "name": "honey",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "dev:fe": "pnpm --filter frontend dev",
+    "build:fe": "pnpm --filter frontend build",
+    "dev:be": "pnpm --filter backend dev",
+    "dev:llm": "node scripts/dev-llm.mjs",
+    "dev:desktop:services": "node scripts/dev-desktop.mjs",
+    "dev:desktop:llm": "node scripts/dev-desktop-llm.mjs",
+    "build:be": "pnpm --filter backend build",
+    "build:backend-sidecar": "node scripts/build-backend-sidecar.mjs",
+    "dev:desktop": "frontend/node_modules/.bin/tauri dev",
+    "build:desktop": "frontend/node_modules/.bin/tauri build --bundles nsis",
+    "typecheck:contracts": "pnpm --filter @honey/api-contracts typecheck",
+    "lint": "pnpm -r --if-present lint",
+    "smoke:persona-llm": "node scripts/smoke-persona-llm.mjs",
+    "test": "pnpm --filter backend test && pnpm --filter frontend test --run && node scripts/package-scripts.test.mjs",
+    "check": "pnpm typecheck:contracts && pnpm build:be && pnpm build:fe && pnpm test"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.20.0"
+  }
+}

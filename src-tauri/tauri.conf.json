@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "honey",
+  "version": "0.1.0",
+  "identifier": "com.honey.voiceinput",
+  "build": {
+    "beforeDevCommand": "pnpm --workspace-root dev:desktop:services",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm --workspace-root build:backend-sidecar && pnpm --filter frontend build",
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "honey - 甜美",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 640,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": [
+      "binaries/honey-backend"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}

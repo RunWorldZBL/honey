@@ -1,0 +1,6 @@
+packages:
+  - backend
+  - frontend
+  - shared/*
+
+shellEmulator: true

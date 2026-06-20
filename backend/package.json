@@ -1,0 +1,23 @@
+{
+  "name": "backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsc -p tsconfig.json && node dist-test/backend/src/index.js",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && node dist-test/backend/src/localDataStore.test.js && node dist-test/backend/src/asrAdapter.test.js && node dist-test/backend/src/personaRewriteAdapter.test.js && node dist-test/backend/src/funAsrNanoRunner.test.js && node dist-test/backend/src/honeyService.test.js && node dist-test/backend/src/httpServer.test.js && node dist-test/backend/src/index.test.js",
+    "asr:fun-nano": "tsc -p tsconfig.json && node dist-test/backend/src/funAsrNanoRunner.js --model-root ../Fun-ASR-Nano-GGUF",
+    "lint": "echo \"backend lint placeholder\""
+  },
+  "dependencies": {
+    "@honey/api-contracts": "workspace:*",
+    "onnxruntime-node": "^1.27.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.2",
+    "typescript": "~6.0.2"
+  }
+}
