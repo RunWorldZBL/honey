@@ -17,6 +17,7 @@
     "build:desktop": "frontend/node_modules/.bin/tauri build --bundles nsis",
     "typecheck:contracts": "pnpm --filter @honey/api-contracts typecheck",
     "lint": "pnpm -r --if-present lint",
+    "smoke:direct-asr": "node scripts/smoke-direct-asr.mjs",
     "smoke:persona-llm": "node scripts/smoke-persona-llm.mjs",
     "test": "pnpm --filter backend test && pnpm --filter frontend test --run && node scripts/package-scripts.test.mjs",
     "check": "pnpm typecheck:contracts && pnpm build:be && pnpm build:fe && pnpm test"

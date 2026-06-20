@@ -9,6 +9,8 @@ const funAsrNanoRunner = await readFile(new URL('../backend/src/funAsrNanoRunner
 const devDesktopServices = await readFile(new URL('./dev-desktop.mjs', import.meta.url), 'utf8');
 const devDesktopLlm = await readFile(new URL('./dev-desktop-llm.mjs', import.meta.url), 'utf8');
 const personaLlmSmoke = await readFile(new URL('./smoke-persona-llm.mjs', import.meta.url), 'utf8');
+const directAsrSmokePath = new URL('./smoke-direct-asr.mjs', import.meta.url);
+const directAsrSmoke = await readFile(directAsrSmokePath, 'utf8').catch(() => '');
 const backendSidecarBuild = await readFile(new URL('./build-backend-sidecar.mjs', import.meta.url), 'utf8');
 
 assert.match(
@@ -62,6 +64,11 @@ assert.match(
   'root scripts should expose a persona LLM smoke test',
 );
 assert.match(
+  packageJson.scripts['smoke:direct-asr'],
+  /scripts\/smoke-direct-asr\.mjs/,
+  'root scripts should expose a direct ASR smoke test',
+);
+assert.match(
   tauriConfig.build.beforeDevCommand,
   /dev:desktop:services/,
   'Tauri dev should launch both frontend and backend services',
@@ -96,6 +103,7 @@ await access(new URL('./dev-desktop.mjs', import.meta.url));
 await access(new URL('./dev-desktop-llm.mjs', import.meta.url));
 await access(new URL('./dev-llm.mjs', import.meta.url));
 await access(new URL('./smoke-persona-llm.mjs', import.meta.url));
+await access(directAsrSmokePath);
 await access(new URL('./build-backend-sidecar.mjs', import.meta.url));
 await access(new URL('../src-tauri/icons/icon.ico', import.meta.url));
 await access(new URL('../src-tauri/binaries/README.md', import.meta.url));
@@ -210,6 +218,21 @@ assert.match(
   personaLlmSmoke,
   /llama-server/,
   'persona LLM smoke should start the local llama-server runtime',
+);
+assert.match(
+  directAsrSmoke,
+  /System\.Speech/,
+  'direct ASR smoke should generate a Windows TTS audio sample',
+);
+assert.match(
+  directAsrSmoke,
+  /runDirectDictationSession/,
+  'direct ASR smoke should run the backend direct dictation session',
+);
+assert.match(
+  directAsrSmoke,
+  /Fun-ASR-Nano-GGUF/,
+  'direct ASR smoke should use the local Fun-ASR-Nano model directory',
 );
 
 for (const legacyCommand of [
