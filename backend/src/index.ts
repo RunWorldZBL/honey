@@ -73,7 +73,7 @@ const resolveDefaultLlmModelRoot = (
   dataRoot = dirname(resolveDefaultHoneyDataFilePath(env)),
 ) =>
   env.HONEY_LLM_MODEL_ROOT?.trim()
-  || (isBackendWorkspaceDirectory(cwd) ? '../models' : join(dataRoot, 'models', 'llm'));
+  || (isBackendWorkspaceDirectory(cwd) ? '../models' : join(dataRoot, 'models'));
 
 const resolveDefaultRepoRoot = (env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()) => {
   if (env.HONEY_REPO_ROOT?.trim()) {

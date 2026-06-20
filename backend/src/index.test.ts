@@ -172,7 +172,7 @@ function testPackagedRuntimeUsesAppDirectoryModelDefaults() {
   }
 
   assertEqual(options.modelRoot, 'C:\\Users\\benlin\\AppData\\Roaming\\honey\\models\\Fun-ASR-Nano-GGUF', 'packaged runtime should default ASR models to the user data model directory');
-  assertEqual(options.llmModelRoot, 'C:\\Users\\benlin\\AppData\\Roaming\\honey\\models\\llm', 'packaged runtime should default LLM models to the user data model directory');
+  assertEqual(options.llmModelRoot, 'C:\\Users\\benlin\\AppData\\Roaming\\honey\\models', 'packaged runtime should default LLM models to the shared user model directory');
   assertEqual(
     options.localLlmRuntimeDefaults?.modelPath,
     undefined,

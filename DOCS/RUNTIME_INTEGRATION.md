@@ -108,7 +108,7 @@ POST /api/dictation/persona-session
 
 ```text
 %APPDATA%\honey\models\Fun-ASR-Nano-GGUF
-%APPDATA%\honey\models\llm
+%APPDATA%\honey\models
 %APPDATA%\honey\runtime\llama.cpp\llama-server.exe
 ```
 
@@ -391,7 +391,7 @@ GET /api/runtime/health
   "localDataPath": "D:/honey",
   "audioCapturePath": "D:/honey/audio-captures",
   "modelRoot": "C:/Users/benlin/AppData/Roaming/honey/models/Fun-ASR-Nano-GGUF",
-  "llmModelRoot": "C:/Users/benlin/AppData/Roaming/honey/models/llm",
+  "llmModelRoot": "C:/Users/benlin/AppData/Roaming/honey/models",
   "llamaServerPath": "C:/Users/benlin/AppData/Roaming/honey/runtime/llama.cpp/llama-server.exe",
   "asr": {
     "status": "ready",

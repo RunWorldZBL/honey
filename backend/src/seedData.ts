@@ -172,7 +172,7 @@ export const seedSettings: AppSettings = {
   saveHistory: true,
   localDataPath: 'D:/honey',
   asrModelRoot: 'D:/honey/models/Fun-ASR-Nano-GGUF',
-  llmModelRoot: 'D:/honey/models/llm',
+  llmModelRoot: 'D:/honey/models',
   llamaServerPath: 'D:/honey/runtime/llama.cpp/llama-server.exe',
   startupEnabled: false,
   trayEnabled: true,
