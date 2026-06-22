@@ -82,7 +82,7 @@ export function HistoryPage() {
         <div>
           <span className="eyebrow">本地归档</span>
           <h2>历史记录</h2>
-          <p>搜索原文、上屏文本、目标应用，并查看保存的录音占位。</p>
+          <p>搜索原文、上屏文本、目标应用，并查看保存的录音文件路径。</p>
         </div>
         <StatusBadge label={`${allRecords.length} 条`} tone="info" />
       </section>
@@ -171,7 +171,7 @@ export function HistoryPage() {
         <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-record-title">
           <div className="confirm-dialog__panel">
             <h3 id="delete-record-title">确认删除这条记录？</h3>
-            <p>这会从本机历史记录中移除该条文本记录，录音文件删除策略后续会单独确认。</p>
+            <p>这会从本机历史记录中移除该条文本记录，录音文件是否保留取决于当前保存录音设置。</p>
             <div className="button-row">
               <button
                 type="button"

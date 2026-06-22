@@ -49,7 +49,7 @@ export function HomePage({ onRouteChange }: { onRouteChange: (route: AppRouteId)
               <span className="eyebrow">当前工作流</span>
               <h2>直接转写是默认模式</h2>
               <p>把光标放在任意输入框，按住热键说话，松开后进入识别并写入历史记录。</p>
-              <p className="inline-hint">当前 UI mock 支持在应用窗口内按住 CapsLock 预览听写浮层流程。</p>
+              <p className="inline-hint">桌面端会监听全局热键；开发态也支持在应用窗口内按键预览听写浮层。</p>
             </div>
             <StatusBadge value="direct" />
           </div>
@@ -141,7 +141,7 @@ export function HomePage({ onRouteChange }: { onRouteChange: (route: AppRouteId)
           <div className="section-heading">
             <div>
               <h2>快捷入口</h2>
-              <p>所有 CapsWriter 参考能力都在 UI 中有入口，后续再逐项接真实后端。</p>
+              <p>主要能力已接入本地后端，模型、热词、规则和人设可在对应页面管理。</p>
             </div>
           </div>
           <div className="quick-actions">

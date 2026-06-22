@@ -33,10 +33,10 @@ export function TrayMenuPreview() {
     <section className="panel">
       <div className="section-heading">
         <div>
-          <h2>托盘菜单预览</h2>
-          <p>系统级托盘还未接入，第一版先固定菜单能力和状态。</p>
+          <h2>托盘菜单</h2>
+          <p>系统托盘已接入打开主窗口、迷你窗口和退出；列表展示后续可扩展的快捷动作。</p>
         </div>
-        <StatusBadge label="mock" tone="neutral" />
+        <StatusBadge label="已接入" tone="success" />
       </div>
       <div className="tray-list">
         {trayActions.map((action) => {

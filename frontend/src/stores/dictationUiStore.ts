@@ -43,9 +43,9 @@ interface DictationUiStore {
 export const useDictationUiStore = create<DictationUiStore>((set) => ({
   windowMode: 'full',
   currentMode: 'direct',
-  hotkey: 'CapsLock',
+  hotkey: 'F9',
   triggerMode: 'hold-to-talk',
-  triggerThresholdMs: 180,
+  triggerThresholdMs: 0,
   selectedPersonaId: 'persona-office',
   outputMethod: 'paste',
   restoreClipboard: true,

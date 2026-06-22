@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+﻿import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -178,7 +178,7 @@ async function testMalformedLocalDataFallsBackToSeedData() {
 
     const service = createHoneyService({ dataFilePath });
 
-    assertEqual((await service.getSettings()).hotkey, 'CapsLock', 'malformed local data should fall back to seed settings');
+    assertEqual((await service.getSettings()).hotkey, 'F9', 'malformed local data should fall back to seed settings');
     assertEqual((await service.listHotwords()).some(item => item.id === 'hotword-honey'), true, 'malformed local data should fall back to seed hotwords');
   } finally {
     await rm(dataDir, { recursive: true, force: true });
@@ -200,7 +200,7 @@ async function testSchemaInvalidLocalDataFallsBackToSeedData() {
 
     const service = createHoneyService({ dataFilePath });
 
-    assertEqual((await service.getSettings()).hotkey, 'CapsLock', 'schema-invalid local data should fall back to seed settings');
+    assertEqual((await service.getSettings()).hotkey, 'F9', 'schema-invalid local data should fall back to seed settings');
     assertEqual((await service.listHotwords()).some(item => item.id === 'hotword-honey'), true, 'schema-invalid local data should fall back to seed hotwords');
   } finally {
     await rm(dataDir, { recursive: true, force: true });
@@ -220,7 +220,7 @@ async function testFailedPersistenceDoesNotMutateMemory() {
       () => undefined,
     );
 
-    assertEqual((await service.getSettings()).hotkey, 'CapsLock', 'failed persistence should leave settings unchanged in memory');
+    assertEqual((await service.getSettings()).hotkey, 'F9', 'failed persistence should leave settings unchanged in memory');
 
     await service.deleteTranscriptRecord('rec-001').then(
       () => {
@@ -1097,6 +1097,7 @@ async function testFailedDictationSessionIsArchived() {
   assertEqual(session.record.status, 'failed', 'failed dictation session should return a failed transcript record');
   assertEqual(session.record.audioPath, 'D:/tmp/honey-failed.wav', 'failed dictation record should keep audio path');
   assertEqual(session.record.sourceApp, '失败输入框', 'failed dictation record should keep source app');
+  assertEqual(session.record.errorMessage, 'ASR runtime unavailable', 'failed dictation record should expose the ASR failure reason');
   assertEqual((await service.listTranscriptRecords()).some(record => record.id === session.record.id), true, 'failed dictation record should be archived');
 }
 

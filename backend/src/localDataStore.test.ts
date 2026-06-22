@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+﻿import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -41,7 +41,7 @@ async function testLocalDataStoreKeepsBackupOnOverwrite() {
 
     assertEqual(existsSync(`${dataFilePath}.tmp`), false, 'temporary local data file should not remain after save');
     assertEqual(currentData.settings.hotkey, 'F7', 'current local data file should contain latest save');
-    assertEqual(backupData.settings.hotkey, 'CapsLock', 'backup local data file should contain previous save');
+    assertEqual(backupData.settings.hotkey, 'F9', 'backup local data file should contain previous save');
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

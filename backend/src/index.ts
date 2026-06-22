@@ -185,8 +185,8 @@ export function startHoneyBackend(options: StartHoneyBackendOptions = {}) {
     dataFilePath: options.dataFilePath ?? resolveDefaultHoneyDataFilePath(),
   });
   const server = createHoneyHttpServer(service);
-  const port = options.port ?? 33577;
-  const host = options.host ?? '127.0.0.1';
+  const port = options.port ?? parsePositiveInt(process.env.HONEY_BACKEND_PORT) ?? 33577;
+  const host = (options.host ?? process.env.HONEY_BACKEND_HOST?.trim()) || '127.0.0.1';
 
   server.listen(port, host, () => {
     console.log(`honey backend listening on http://${host}:${port}`);

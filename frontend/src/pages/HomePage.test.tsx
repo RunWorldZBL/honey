@@ -32,7 +32,7 @@ const getSettings = vi.hoisted(() => vi.fn(async () => ({
   hotkey: 'F8',
   mouseShortcut: '鼠标侧键 2',
   triggerMode: 'hold-to-talk',
-  triggerThresholdMs: 180,
+  triggerThresholdMs: 0,
   outputMethod: 'paste',
   restoreClipboard: true,
   language: 'zh-CN',

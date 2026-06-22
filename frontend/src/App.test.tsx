@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+﻿import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listTranscriptRecords = vi.hoisted(() => vi.fn(async () => [
@@ -15,10 +15,10 @@ const listTranscriptRecords = vi.hoisted(() => vi.fn(async () => [
 const appSettings = vi.hoisted(() => ({
   defaultMode: 'direct',
   personaModeEnabled: false,
-  hotkey: 'CapsLock',
+  hotkey: 'F9',
   mouseShortcut: '鼠标侧键 1',
   triggerMode: 'hold-to-talk',
-  triggerThresholdMs: 180,
+  triggerThresholdMs: 0,
   outputMethod: 'typing',
   restoreClipboard: true,
   language: 'zh-CN',
@@ -41,11 +41,13 @@ const appSettings = vi.hoisted(() => ({
   punctuationCleanupApps: [],
 }));
 const getSettings = vi.hoisted(() => vi.fn(async () => appSettings));
-const dictationOverlay = vi.hoisted(() => vi.fn());
 const useDictationHotkey = vi.hoisted(() => vi.fn());
 const desktopShell = vi.hoisted(() => {
   let windowModeHandler: ((mode: 'full' | 'mini') => void) | undefined;
   const unlistenWindowMode = vi.fn();
+  const publishDictationOverlaySnapshot = vi.fn(async () => ({ ok: true as const }));
+  const setOverlayWindowVisible = vi.fn(async (visible: boolean) => ({ ok: true as const, visible }));
+  const setOverlayCenterOffset = vi.fn(async (offsetX: number) => ({ ok: true as const, offsetX }));
   const setStartupEnabled = vi.fn(async (enabled: boolean) => ({ ok: true as const, enabled }));
   const setTrayEnabled = vi.fn(async (enabled: boolean) => ({ ok: true as const, enabled }));
   const onWindowModeChange = vi.fn(async (handler: (mode: 'full' | 'mini') => void) => {
@@ -61,10 +63,16 @@ const desktopShell = vi.hoisted(() => {
       windowModeHandler = undefined;
       onWindowModeChange.mockClear();
       unlistenWindowMode.mockClear();
+      publishDictationOverlaySnapshot.mockClear();
+      setOverlayWindowVisible.mockClear();
+      setOverlayCenterOffset.mockClear();
       setStartupEnabled.mockClear();
       setTrayEnabled.mockClear();
     },
     onWindowModeChange,
+    publishDictationOverlaySnapshot,
+    setOverlayWindowVisible,
+    setOverlayCenterOffset,
     setStartupEnabled,
     setTrayEnabled,
     unlistenWindowMode,
@@ -83,18 +91,15 @@ vi.mock('@/hooks/useDictationHotkey', () => ({
 vi.mock('@/api/desktopShell', () => ({
   desktopShellClient: {
     onWindowModeChange: desktopShell.onWindowModeChange,
+    publishDictationOverlaySnapshot: desktopShell.publishDictationOverlaySnapshot,
+    setOverlayWindowVisible: desktopShell.setOverlayWindowVisible,
+    setOverlayCenterOffset: desktopShell.setOverlayCenterOffset,
     setStartupEnabled: desktopShell.setStartupEnabled,
     setTrayEnabled: desktopShell.setTrayEnabled,
   },
 }));
 vi.mock('@/components/AppShell', () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
-}));
-vi.mock('@/components/DictationOverlay', () => ({
-  DictationOverlay: (props: unknown) => {
-    dictationOverlay(props);
-    return <div data-testid="dictation-overlay" />;
-  },
 }));
 vi.mock('@/components/MiniWindow', () => ({
   MiniWindow: () => null,
@@ -137,7 +142,6 @@ describe('App', () => {
     });
     listTranscriptRecords.mockClear();
     getSettings.mockClear();
-    dictationOverlay.mockClear();
     useDictationHotkey.mockClear();
     desktopShell.reset();
   });
@@ -241,7 +245,7 @@ describe('App', () => {
     }));
   });
 
-  it('keeps the dictation overlay visible in mini window mode', async () => {
+  it('keeps the desktop dictation overlay visible in mini window mode', async () => {
     useDictationUiStore.setState({
       overlaySnapshot: {
         state: 'listening',
@@ -259,13 +263,61 @@ describe('App', () => {
     await waitFor(() => {
       expect(useDictationUiStore.getState().windowMode).toBe('mini');
     });
-    expect(screen.getByTestId('dictation-overlay')).toBeInTheDocument();
-    expect(dictationOverlay).toHaveBeenLastCalledWith(expect.objectContaining({
-      position: 'bottom-center',
-      snapshot: expect.objectContaining({
-        state: 'listening',
-      }),
+    expect(desktopShell.publishDictationOverlaySnapshot).toHaveBeenCalledWith(expect.objectContaining({
+      state: 'listening',
+      mode: 'direct',
+      volumeLevel: 0.6,
     }));
+    expect(desktopShell.setOverlayWindowVisible).toHaveBeenCalledWith(true, 'bottom-center');
+  });
+
+  it('publishes overlay snapshot changes to the desktop overlay window', async () => {
+    render(<App />);
+
+    act(() => {
+      useDictationUiStore.getState().setOverlaySnapshot({
+        state: 'listening',
+        mode: 'direct',
+        volumeLevel: 0.34,
+      });
+    });
+
+    await waitFor(() => {
+      expect(desktopShell.publishDictationOverlaySnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        state: 'listening',
+        volumeLevel: 0.34,
+      }));
+    });
+    expect(desktopShell.setOverlayWindowVisible).toHaveBeenCalledWith(true, 'bottom-center');
+  });
+
+  it('keeps the desktop overlay visible while recognizing and showing the result', async () => {
+    useDictationUiStore.setState({
+      overlaySnapshot: {
+        state: 'recognizing',
+        mode: 'direct',
+        volumeLevel: 0,
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(desktopShell.setOverlayWindowVisible).toHaveBeenCalledWith(true, 'bottom-center');
+    });
+
+    act(() => {
+      useDictationUiStore.getState().setOverlaySnapshot({
+        state: 'completed',
+        mode: 'direct',
+        volumeLevel: 0,
+        previewText: '今天下午把会议纪要发给大家。',
+      });
+    });
+
+    await waitFor(() => {
+      expect(desktopShell.setOverlayWindowVisible).toHaveBeenCalledWith(true, 'bottom-center');
+    });
   });
 
   it('syncs tray preference from settings into the desktop shell', async () => {
@@ -295,6 +347,13 @@ describe('App', () => {
   });
 
   it('hides the dictation overlay when settings disable it', async () => {
+    useDictationUiStore.setState({
+      overlaySnapshot: {
+        state: 'listening',
+        mode: 'direct',
+        volumeLevel: 0.6,
+      },
+    });
     getSettings.mockResolvedValueOnce({
       ...appSettings,
       overlayEnabled: false,
@@ -303,11 +362,18 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.queryByTestId('dictation-overlay')).not.toBeInTheDocument();
+      expect(desktopShell.setOverlayWindowVisible).toHaveBeenCalledWith(false, 'bottom-center');
     });
   });
 
-  it('passes the configured overlay position to the dictation overlay', async () => {
+  it('passes the configured overlay position to the desktop overlay window', async () => {
+    useDictationUiStore.setState({
+      overlaySnapshot: {
+        state: 'listening',
+        mode: 'direct',
+        volumeLevel: 0.6,
+      },
+    });
     getSettings.mockResolvedValueOnce({
       ...appSettings,
       overlayPosition: 'bottom-right',
@@ -316,9 +382,7 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(dictationOverlay).toHaveBeenLastCalledWith(expect.objectContaining({
-        position: 'bottom-right',
-      }));
+      expect(desktopShell.setOverlayWindowVisible).toHaveBeenCalledWith(true, 'bottom-right');
     });
   });
 });

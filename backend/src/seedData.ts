@@ -159,10 +159,10 @@ export const seedTrayActions: TrayAction[] = [
 export const seedSettings: AppSettings = {
   defaultMode: 'direct',
   personaModeEnabled: false,
-  hotkey: 'CapsLock',
+  hotkey: 'F9',
   mouseShortcut: '鼠标侧键 1',
   triggerMode: 'hold-to-talk',
-  triggerThresholdMs: 180,
+  triggerThresholdMs: 0,
   outputMethod: 'paste',
   restoreClipboard: true,
   language: 'zh-CN',

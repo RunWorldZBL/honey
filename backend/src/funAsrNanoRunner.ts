@@ -8,6 +8,7 @@ import type { AsrTranscriptionInput, AsrTranscriptionResult } from './asrAdapter
 import { scanFunAsrNanoModel } from './modelInventory.js';
 
 const targetSampleRate = 16_000;
+const minimumInferenceDurationMs = 1_600;
 const funAsrNanoEmptyTranscriptIssue = 'fun_asr_nano_empty_transcript';
 
 interface FunAsrNanoTranscriptionInput extends AsrTranscriptionInput {
@@ -386,8 +387,26 @@ export async function decodeFunAsrNanoCtcIndices(indices: Iterable<number>, mode
     previousId = index;
   }
 
-  return Buffer.concat(tokenBuffers).toString('utf8').trim();
+  return Buffer.concat(tokenBuffers)
+    .toString('utf8')
+    .replace(/<\|nospeech\|>/g, '')
+    .trim();
 }
+
+const padAudioForInference = (audio: FunAsrNanoAudio): FunAsrNanoAudio => {
+  const minimumSampleCount = Math.ceil(targetSampleRate * minimumInferenceDurationMs / 1000);
+  if (audio.samples.length >= minimumSampleCount) {
+    return audio;
+  }
+
+  const samples = new Float32Array(minimumSampleCount);
+  samples.set(audio.samples);
+
+  return {
+    ...audio,
+    samples,
+  };
+};
 
 const runFunAsrNanoCtc = async (audio: FunAsrNanoAudio, modelRoot: string) => {
   const encoderSession = await ort.InferenceSession.create(join(modelRoot, 'Fun-ASR-Nano-Encoder-Adaptor.int8.onnx'));
@@ -415,7 +434,8 @@ export async function transcribeWithFunAsrNano(
   await assertFunAsrNanoRuntimeAvailable();
 
   const audio = await loadAudioSamples(input.audioPath);
-  const indices = await runFunAsrNanoCtc(audio, modelRoot);
+  const inferenceAudio = padAudioForInference(audio);
+  const indices = await runFunAsrNanoCtc(inferenceAudio, modelRoot);
   const text = await decodeFunAsrNanoCtcIndices(indices, modelRoot);
   if (!text) {
     throw new Error(funAsrNanoEmptyTranscriptIssue);

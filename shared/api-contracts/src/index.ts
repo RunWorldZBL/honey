@@ -44,6 +44,7 @@ export const TranscriptRecordSchema = z.object({
   durationMs: z.number().optional(),
   latencyMs: z.number().optional(),
   status: RecordStatusSchema,
+  errorMessage: z.string().optional(),
 });
 export type TranscriptRecord = z.infer<typeof TranscriptRecordSchema>;
 

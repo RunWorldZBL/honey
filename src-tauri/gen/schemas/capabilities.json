@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Default desktop permissions for honey main and overlay windows.","remote":{"urls":["http://localhost:1420/*","http://127.0.0.1:1420/*"]},"local":true,"windows":["main","dictation-overlay"],"permissions":["core:default","core:event:default","dialog:default","shell:default"]}}

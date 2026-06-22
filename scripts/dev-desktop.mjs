@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
 
-const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const withLocalLlm = process.env.HONEY_DESKTOP_WITH_LLM === '1';
 const localLlmHost = process.env.HONEY_LLM_HOST || '127.0.0.1';
 const localLlmPort = process.env.HONEY_LLM_PORT || '8080';
@@ -18,12 +17,18 @@ const backendEnv = {
     : {}),
 };
 
+const pnpmArgs = (args) => process.platform === 'win32'
+  ? ['/d', '/s', '/c', `pnpm ${args.join(' ')}`]
+  : args;
+const pnpmCommand = process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'pnpm';
+const spawnPnpm = (args, options) => spawn(pnpmCommand, pnpmArgs(args), options);
+
 const processes = [
   ...(withLocalLlm
     ? [
       {
         name: 'llm',
-        child: spawn(pnpmCommand, ['dev:llm'], {
+        child: spawnPnpm(['dev:llm'], {
           stdio: ['ignore', 'pipe', 'pipe'],
           env: process.env,
         }),
@@ -32,14 +37,14 @@ const processes = [
     : []),
   {
     name: 'backend',
-    child: spawn(pnpmCommand, ['--filter', 'backend', 'dev'], {
+    child: spawnPnpm(['--filter', 'backend', 'dev'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: backendEnv,
     }),
   },
   {
     name: 'frontend',
-    child: spawn(pnpmCommand, ['--filter', 'frontend', 'dev'], {
+    child: spawnPnpm(['--filter', 'frontend', 'dev'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     }),

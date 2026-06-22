@@ -723,7 +723,7 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
           overlayStates: ['listening', 'recognizing', 'completed', 'inserted'],
           record: clone(record),
         };
-      } catch {
+      } catch (error) {
         const record: TranscriptRecord = {
           id: createRecordId(),
           createdAt: now,
@@ -734,6 +734,7 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
           audioPath: settings.saveAudio ? input.audioPath : undefined,
           latencyMs: 0,
           status: 'failed',
+          errorMessage: error instanceof Error ? error.message : 'direct_dictation_failed',
         };
 
         archiveTranscriptRecord(record);
@@ -797,7 +798,7 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
           overlayStates: ['listening', 'recognizing', 'completed', 'inserted'],
           record: clone(record),
         };
-      } catch {
+      } catch (error) {
         const record: TranscriptRecord = {
           id: createRecordId(),
           createdAt: now,
@@ -809,6 +810,7 @@ export function createHoneyService(options: HoneyServiceOptions = {}): HoneyServ
           audioPath: settings.saveAudio ? input.audioPath : undefined,
           latencyMs: 0,
           status: 'failed',
+          errorMessage: error instanceof Error ? error.message : 'persona_dictation_failed',
         };
 
         archiveTranscriptRecord(record);

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+﻿import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,10 +28,10 @@ const listModels = vi.hoisted(() => vi.fn(async () => [
 const getSettings = vi.hoisted(() => vi.fn(async () => ({
   defaultMode: 'direct',
   personaModeEnabled: false,
-  hotkey: 'CapsLock',
+  hotkey: 'F9',
   mouseShortcut: '鼠标侧键 1',
   triggerMode: 'hold-to-talk',
-  triggerThresholdMs: 180,
+  triggerThresholdMs: 0,
   outputMethod: 'paste',
   restoreClipboard: true,
   language: 'zh-CN',
@@ -59,10 +59,10 @@ const deletePersona = vi.hoisted(() => vi.fn(async (id: string) => ({ ok: true a
 const updateSettings = vi.hoisted(() => vi.fn(async (patch) => ({
   defaultMode: 'direct',
   personaModeEnabled: false,
-  hotkey: 'CapsLock',
+  hotkey: 'F9',
   mouseShortcut: '鼠标侧键 1',
   triggerMode: 'hold-to-talk',
-  triggerThresholdMs: 180,
+  triggerThresholdMs: 0,
   outputMethod: 'paste',
   restoreClipboard: true,
   language: 'zh-CN',

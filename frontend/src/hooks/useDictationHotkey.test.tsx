@@ -1,10 +1,13 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DictationSessionResult } from '@honey/api-contracts';
 import type { HoldToTalkCaptureResult, HoldToTalkHotkeyEvent } from '@/api/desktopShell';
 
 import { useDictationUiStore } from '@/stores/dictationUiStore';
 
-const runDirectDictationSession = vi.hoisted(() => vi.fn(async () => ({
+type MockDictationSessionRunner = () => Promise<DictationSessionResult>;
+
+const runDirectDictationSession = vi.hoisted(() => vi.fn<MockDictationSessionRunner>(async () => ({
   overlayStates: ['listening', 'recognizing', 'completed', 'inserted'],
   record: {
     id: 'rec-hook-direct',
@@ -19,7 +22,7 @@ const runDirectDictationSession = vi.hoisted(() => vi.fn(async () => ({
     status: 'completed',
   },
 })));
-const runPersonaDictationSession = vi.hoisted(() => vi.fn(async () => ({
+const runPersonaDictationSession = vi.hoisted(() => vi.fn<MockDictationSessionRunner>(async () => ({
   overlayStates: ['listening', 'recognizing', 'completed', 'inserted'],
   record: {
     id: 'rec-hook-persona',
@@ -58,13 +61,13 @@ const startHoldToTalkCapture = vi.hoisted(() => vi.fn(async ({ hotkey }: {
 const finishHoldToTalkCapture = vi.hoisted(() => vi.fn<() => Promise<HoldToTalkCaptureResult>>(async () => ({
   ok: true as const,
   state: 'captured' as const,
-  hotkey: 'CapsLock',
+  hotkey: 'F9',
   audioPath: 'mock://desktop-captured.wav',
 })));
 const cancelHoldToTalkCapture = vi.hoisted(() => vi.fn(async () => ({
   ok: true as const,
   state: 'cancelled' as const,
-  hotkey: 'CapsLock',
+  hotkey: 'F9',
 })));
 const insertText = vi.hoisted(() => vi.fn(async ({ text, method }: {
   text: string;
@@ -89,7 +92,7 @@ const hotkeyEventHarness = vi.hoisted(() => {
     })),
     unregisterHoldToTalkHotkey: vi.fn(async () => ({
       ok: true as const,
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     })),
     onHoldToTalkHotkey: vi.fn(async (handler: (event: HoldToTalkHotkeyEvent) => void) => {
       hotkeyEventHarness.listener = handler;
@@ -128,7 +131,7 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
-const createSessionResult = (id: string, outputText: string) => ({
+const createSessionResult = (id: string, outputText: string): DictationSessionResult => ({
   overlayStates: ['listening', 'recognizing', 'completed', 'inserted'],
   record: {
     id,
@@ -212,13 +215,13 @@ describe('useDictationHotkey', () => {
     finishHoldToTalkCapture.mockImplementation(async () => ({
       ok: true,
       state: 'captured',
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
       audioPath: 'mock://desktop-captured.wav',
     }));
     cancelHoldToTalkCapture.mockImplementation(async () => ({
       ok: true,
       state: 'cancelled',
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     }));
     insertText.mockImplementation(async ({ text, method }: {
       text: string;
@@ -237,7 +240,7 @@ describe('useDictationHotkey', () => {
     }));
     hotkeyEventHarness.unregisterHoldToTalkHotkey.mockImplementation(async () => ({
       ok: true,
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     }));
     hotkeyEventHarness.onHoldToTalkHotkey.mockImplementation(async (handler: (event: HoldToTalkHotkeyEvent) => void) => {
       hotkeyEventHarness.listener = handler;
@@ -249,7 +252,7 @@ describe('useDictationHotkey', () => {
     vi.useRealTimers();
   });
 
-  it('runs a backend direct dictation session from CapsLock release', async () => {
+  it('runs a backend direct dictation session from F9 release', async () => {
     const onSessionCompleted = vi.fn();
     renderHook(() => useDictationHotkey({
       enabled: true,
@@ -258,7 +261,7 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
     });
 
     expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
@@ -266,11 +269,11 @@ describe('useDictationHotkey', () => {
       volumeLevel: 0,
     });
     expect(startHoldToTalkCapture).toHaveBeenCalledWith(expect.objectContaining({
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('recognizing');
@@ -278,7 +281,7 @@ describe('useDictationHotkey', () => {
     expect(finishHoldToTalkCapture).toHaveBeenCalledOnce();
     expect(runDirectDictationSession).toHaveBeenCalledWith({
       audioPath: 'mock://desktop-captured.wav',
-      sourceApp: 'Mock 输入框',
+      sourceApp: '当前输入框',
     });
 
     await act(async () => {
@@ -300,13 +303,13 @@ describe('useDictationHotkey', () => {
     }));
 
     await act(async () => {
-      vi.advanceTimersByTime(900);
+      vi.advanceTimersByTime(299);
     });
 
-    expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('inserted');
+    expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('completed');
 
     await act(async () => {
-      vi.advanceTimersByTime(900);
+      vi.advanceTimersByTime(1);
     });
 
     expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('idle');
@@ -319,7 +322,7 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
     });
 
     expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
@@ -329,14 +332,14 @@ describe('useDictationHotkey', () => {
     expect(startHoldToTalkCapture).toHaveBeenCalledOnce();
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     expect(finishHoldToTalkCapture).not.toHaveBeenCalled();
     expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('listening');
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
     });
 
     expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('recognizing');
@@ -344,7 +347,7 @@ describe('useDictationHotkey', () => {
     expect(finishHoldToTalkCapture).toHaveBeenCalledOnce();
     expect(runDirectDictationSession).toHaveBeenCalledWith({
       audioPath: 'mock://desktop-captured.wav',
-      sourceApp: 'Mock 输入框',
+      sourceApp: '当前输入框',
     });
   });
 
@@ -355,7 +358,7 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
     });
 
     expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('listening');
@@ -365,7 +368,7 @@ describe('useDictationHotkey', () => {
     });
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
@@ -388,12 +391,12 @@ describe('useDictationHotkey', () => {
     await flushAsyncWork();
 
     expect(hotkeyEventHarness.registerHoldToTalkHotkey).toHaveBeenCalledWith({
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     });
     expect(hotkeyEventHarness.onHoldToTalkHotkey).toHaveBeenCalledOnce();
 
     act(() => {
-      hotkeyEventHarness.listener?.({ hotkey: 'CapsLock', state: 'pressed' });
+      hotkeyEventHarness.listener?.({ hotkey: 'F9', state: 'pressed' });
     });
 
     expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
@@ -401,11 +404,11 @@ describe('useDictationHotkey', () => {
       volumeLevel: 0,
     });
     expect(startHoldToTalkCapture).toHaveBeenCalledWith(expect.objectContaining({
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     }));
 
     act(() => {
-      hotkeyEventHarness.listener?.({ hotkey: 'CapsLock', state: 'released' });
+      hotkeyEventHarness.listener?.({ hotkey: 'F9', state: 'released' });
     });
 
     await flushAsyncWork();
@@ -413,7 +416,7 @@ describe('useDictationHotkey', () => {
     expect(finishHoldToTalkCapture).toHaveBeenCalledOnce();
     expect(runDirectDictationSession).toHaveBeenCalledWith({
       audioPath: 'mock://desktop-captured.wav',
-      sourceApp: 'Mock 输入框',
+      sourceApp: '当前输入框',
     });
 
     await act(async () => {
@@ -433,7 +436,7 @@ describe('useDictationHotkey', () => {
     finishHoldToTalkCapture.mockResolvedValueOnce({
       ok: true,
       state: 'captured',
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
       audioCapture: {
         fileName: 'hold-to-talk.webm',
         mimeType: 'audio/webm',
@@ -447,8 +450,8 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
@@ -461,7 +464,7 @@ describe('useDictationHotkey', () => {
     });
     expect(runDirectDictationSession).toHaveBeenCalledWith({
       audioPath: 'D:/honey/audio-captures/uploaded.wav',
-      sourceApp: 'Mock 输入框',
+      sourceApp: '当前输入框',
     });
   });
 
@@ -469,7 +472,7 @@ describe('useDictationHotkey', () => {
     finishHoldToTalkCapture.mockResolvedValueOnce({
       ok: true,
       state: 'captured',
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
       audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
       audioCapture: {
         fileName: 'hold-to-talk.wav',
@@ -484,8 +487,8 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
@@ -493,7 +496,7 @@ describe('useDictationHotkey', () => {
     expect(saveAudioCapture).not.toHaveBeenCalled();
     expect(runDirectDictationSession).toHaveBeenCalledWith({
       audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
-      sourceApp: 'Mock 输入框',
+      sourceApp: '当前输入框',
     });
   });
 
@@ -501,8 +504,8 @@ describe('useDictationHotkey', () => {
     renderHook(() => useDictationHotkey({ enabled: true }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock', repeat: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9', repeat: true }));
     });
 
     expect(useDictationUiStore.getState().overlaySnapshot.state).toBe('listening');
@@ -512,7 +515,7 @@ describe('useDictationHotkey', () => {
     renderHook(() => useDictationHotkey({ enabled: true }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
     });
 
     const onVolumeLevel = startHoldToTalkCapture.mock.calls[0]?.[0].onVolumeLevel;
@@ -544,8 +547,8 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
@@ -564,8 +567,8 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
@@ -586,8 +589,8 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
@@ -612,15 +615,15 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
 
     expect(runPersonaDictationSession).toHaveBeenCalledWith({
       audioPath: 'mock://desktop-captured.wav',
-      sourceApp: 'Mock 输入框',
+      sourceApp: '当前输入框',
       personaId: 'persona-office',
     });
     expect(runDirectDictationSession).not.toHaveBeenCalled();
@@ -657,8 +660,8 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
@@ -676,7 +679,7 @@ describe('useDictationHotkey', () => {
       .mockResolvedValueOnce({
         ok: true,
         state: 'captured',
-        hotkey: 'CapsLock',
+        hotkey: 'F9',
         audioPath: 'mock://second-capture.wav',
       });
     runDirectDictationSession.mockResolvedValueOnce(createSessionResult('rec-second', '第二次语音结果'));
@@ -687,15 +690,15 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
     await flushAsyncWork();
     expect(finishHoldToTalkCapture).toHaveBeenCalledOnce();
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
@@ -718,7 +721,7 @@ describe('useDictationHotkey', () => {
       firstFinish.resolve({
         ok: true,
         state: 'captured',
-        hotkey: 'CapsLock',
+        hotkey: 'F9',
         audioPath: 'mock://first-capture.wav',
       });
     });
@@ -740,17 +743,26 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
 
     expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
       state: 'failed',
-      errorMessage: '直接转写失败',
+      errorMessage: '直接转写失败：backend offline',
     });
     expect(onSessionCompleted).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1600);
+    });
+
+    expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
+      state: 'idle',
+      volumeLevel: 0,
+    });
   });
 
   it('shows a failed overlay when the backend returns a failed direct session record', async () => {
@@ -768,6 +780,7 @@ describe('useDictationHotkey', () => {
         durationMs: 1200,
         latencyMs: 0,
         status: 'failed',
+        errorMessage: 'fun_asr_nano_empty_transcript',
       },
     });
 
@@ -778,40 +791,40 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await flushAsyncWork();
 
     expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
       state: 'failed',
-      errorMessage: '直接转写失败',
+      errorMessage: '没有听到有效语音',
     });
     expect(insertText).not.toHaveBeenCalled();
     expect(onSessionCompleted).not.toHaveBeenCalled();
   });
 
-  it('does not finish capture or run dictation when desktop capture fails to start', async () => {
-    startHoldToTalkCapture.mockRejectedValueOnce(new Error('capture start failed'));
+  it('shows the native capture error when desktop capture fails to start', async () => {
+    startHoldToTalkCapture.mockRejectedValueOnce(new Error('capture_stream_unavailable:access denied'));
 
     renderHook(() => useDictationHotkey({
       enabled: true,
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
     });
 
     await act(async () => {});
 
     expect(useDictationUiStore.getState().overlaySnapshot).toMatchObject({
       state: 'failed',
-      errorMessage: '听写录音启动失败',
+      errorMessage: '听写录音启动失败：麦克风录音流创建失败，可能被系统权限拦截或设备被占用（capture_stream_unavailable:access denied）',
     });
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     expect(finishHoldToTalkCapture).not.toHaveBeenCalled();
@@ -827,8 +840,8 @@ describe('useDictationHotkey', () => {
     }));
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'CapsLock' }));
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'CapsLock' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'F9' }));
     });
 
     await act(async () => {});
@@ -840,7 +853,7 @@ describe('useDictationHotkey', () => {
       startCapture.resolve({
         ok: true,
         state: 'listening',
-        hotkey: 'CapsLock',
+        hotkey: 'F9',
         audioPath: 'mock://desktop-start.wav',
       });
     });

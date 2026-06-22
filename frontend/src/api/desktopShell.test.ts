@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+﻿import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createDesktopShellClient } from './desktopShell';
 
@@ -66,15 +66,30 @@ describe('desktopShell', () => {
       ok: true,
       enabled: true,
     });
+    await expect(client.publishDictationOverlaySnapshot({
+      state: 'listening',
+      mode: 'direct',
+      volumeLevel: 0.4,
+    })).resolves.toEqual({
+      ok: true,
+    });
+    await expect(client.setOverlayWindowVisible(true, 'bottom-center')).resolves.toEqual({
+      ok: true,
+      visible: true,
+    });
+    await expect(client.setOverlayCenterOffset(40.4, 'bottom-center')).resolves.toEqual({
+      ok: true,
+      offsetX: 40,
+    });
     await expect(client.pickAudioFile()).resolves.toBeUndefined();
     await expect(client.openPath({ path: 'D:\\honey\\file-transcriptions\\task-created' })).resolves.toEqual({
       ok: true,
       path: 'D:\\honey\\file-transcriptions\\task-created',
     });
-    await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock' })).resolves.toMatchObject({
+    await expect(client.startHoldToTalkCapture({ hotkey: 'F9' })).resolves.toMatchObject({
       ok: true,
       state: 'listening',
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     });
     await expect(client.finishHoldToTalkCapture()).resolves.toMatchObject({
       ok: true,
@@ -130,9 +145,9 @@ describe('desktopShell', () => {
 
     const client = createDesktopShellClient();
 
-    await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock' })).resolves.toMatchObject({
+    await expect(client.startHoldToTalkCapture({ hotkey: 'F9' })).resolves.toMatchObject({
       state: 'listening',
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     });
     const capture = await client.finishHoldToTalkCapture();
     expect(capture).toMatchObject({
@@ -208,7 +223,7 @@ describe('desktopShell', () => {
     const onVolumeLevel = vi.fn();
     const client = createDesktopShellClient();
 
-    await client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel });
+    await client.startHoldToTalkCapture({ hotkey: 'F9', onVolumeLevel });
     animationFrame?.(16);
 
     expect(connectSource).toHaveBeenCalledOnce();
@@ -281,6 +296,18 @@ describe('desktopShell', () => {
         return { ok: true, enabled: (args as { enabled: boolean }).enabled };
       }
 
+      if (command === 'honey_publish_dictation_overlay_snapshot') {
+        return { ok: true };
+      }
+
+      if (command === 'honey_set_overlay_window_visible') {
+        return { ok: true, visible: (args as { visible: boolean }).visible };
+      }
+
+      if (command === 'honey_set_overlay_center_offset') {
+        return { ok: true, offsetX: (args as { offsetX: number }).offsetX };
+      }
+
       if (command === 'honey_pick_audio_file') {
         return { ok: true, path: 'D:\\recordings\\客户访谈.mp3' };
       }
@@ -302,7 +329,7 @@ describe('desktopShell', () => {
         return {
           ok: true,
           state: 'captured',
-          hotkey: 'CapsLock',
+          hotkey: 'F9',
           audioPath: captureAudioPath,
         };
       }
@@ -311,7 +338,7 @@ describe('desktopShell', () => {
         return {
           ok: true,
           state: 'cancelled',
-          hotkey: 'CapsLock',
+          hotkey: 'F9',
           audioPath: undefined,
         };
       }
@@ -370,12 +397,27 @@ describe('desktopShell', () => {
       ok: true,
       enabled: true,
     });
+    await expect(client.publishDictationOverlaySnapshot({
+      state: 'listening',
+      mode: 'direct',
+      volumeLevel: 0.4,
+    })).resolves.toEqual({
+      ok: true,
+    });
+    await expect(client.setOverlayWindowVisible(true, 'bottom-center')).resolves.toEqual({
+      ok: true,
+      visible: true,
+    });
+    await expect(client.setOverlayCenterOffset(41.6, 'bottom-center')).resolves.toEqual({
+      ok: true,
+      offsetX: 42,
+    });
     await expect(client.pickAudioFile()).resolves.toBe('D:\\recordings\\客户访谈.mp3');
     await expect(client.openPath({ path: 'D:\\honey\\file-transcriptions\\task-created' })).resolves.toEqual({
       ok: true,
       path: 'D:\\honey\\file-transcriptions\\task-created',
     });
-    await expect(client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel: vi.fn() })).resolves.toMatchObject({
+    await expect(client.startHoldToTalkCapture({ hotkey: 'F9', onVolumeLevel: vi.fn() })).resolves.toMatchObject({
       state: 'listening',
       audioPath: captureAudioPath,
     });
@@ -405,9 +447,24 @@ describe('desktopShell', () => {
     expect(invoke).toHaveBeenCalledWith('honey_set_desktop_window_mode', { mode: 'mini' });
     expect(invoke).toHaveBeenCalledWith('honey_set_tray_enabled', { enabled: false });
     expect(invoke).toHaveBeenCalledWith('honey_set_startup_enabled', { enabled: true });
+    expect(invoke).toHaveBeenCalledWith('honey_publish_dictation_overlay_snapshot', {
+      snapshot: {
+        state: 'listening',
+        mode: 'direct',
+        volumeLevel: 0.4,
+      },
+    });
+    expect(invoke).toHaveBeenCalledWith('honey_set_overlay_window_visible', {
+      visible: true,
+      position: 'bottom-center',
+    });
+    expect(invoke).toHaveBeenCalledWith('honey_set_overlay_center_offset', {
+      offsetX: 42,
+      position: 'bottom-center',
+    });
     expect(invoke).toHaveBeenCalledWith('honey_pick_audio_file');
     expect(invoke).toHaveBeenCalledWith('honey_open_path', { path: 'D:\\honey\\file-transcriptions\\task-created' });
-    expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'CapsLock' });
+    expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'F9' });
     expect(invoke).toHaveBeenCalledWith('honey_finish_hold_to_talk_capture');
     expect(invoke).toHaveBeenCalledWith('honey_cancel_hold_to_talk_capture');
     expect(invoke).toHaveBeenCalledWith('honey_insert_text', {
@@ -416,6 +473,53 @@ describe('desktopShell', () => {
       restoreClipboard: true,
     });
     expect(invoke).not.toHaveBeenCalledWith('honey_get_settings');
+  });
+
+  it('subscribes to desktop overlay snapshot events from Tauri', async () => {
+    let overlayHandler: ((event: { payload?: unknown }) => void) | undefined;
+    const unlisten = vi.fn();
+    const listen = vi.fn(async (event: string, handler: (event: { payload?: unknown }) => void) => {
+      overlayHandler = handler;
+      expect(event).toBe('honey://dictation-overlay-snapshot');
+      return unlisten;
+    });
+
+    window.__TAURI__ = {
+      event: { listen },
+    };
+    const client = createDesktopShellClient();
+    const onSnapshot = vi.fn();
+
+    const dispose = await client.onDictationOverlaySnapshot(onSnapshot);
+    overlayHandler?.({
+      payload: {
+        snapshot: {
+          state: 'listening',
+          mode: 'direct',
+          volumeLevel: 0.24,
+        },
+      },
+    });
+    overlayHandler?.({
+      payload: {
+        snapshot: {
+          state: 'listening',
+          mode: 'direct',
+          volumeLevel: 'loud',
+        },
+      },
+    });
+    dispose();
+
+    expect(onSnapshot).toHaveBeenCalledOnce();
+    expect(onSnapshot).toHaveBeenCalledWith({
+      snapshot: {
+        state: 'listening',
+        mode: 'direct',
+        volumeLevel: 0.24,
+      },
+    });
+    expect(unlisten).toHaveBeenCalledOnce();
   });
 
   it('does not use browser microphone capture when Tauri native capture is available', async () => {
@@ -436,7 +540,7 @@ describe('desktopShell', () => {
         return {
           ok: true,
           state: 'captured',
-          hotkey: 'CapsLock',
+          hotkey: 'F9',
           audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
         };
       }
@@ -465,11 +569,11 @@ describe('desktopShell', () => {
     window.__TAURI__ = { core: { invoke } };
     const client = createDesktopShellClient();
 
-    await client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel: vi.fn() });
+    await client.startHoldToTalkCapture({ hotkey: 'F9', onVolumeLevel: vi.fn() });
     await client.finishHoldToTalkCapture();
 
     expect(getUserMedia).not.toHaveBeenCalled();
-    expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'CapsLock' });
+    expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'F9' });
     expect(invoke).toHaveBeenCalledWith('honey_finish_hold_to_talk_capture');
   });
 
@@ -490,7 +594,7 @@ describe('desktopShell', () => {
         return {
           ok: true,
           state: 'captured',
-          hotkey: 'CapsLock',
+          hotkey: 'F9',
           audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
         };
       }
@@ -510,7 +614,7 @@ describe('desktopShell', () => {
     const client = createDesktopShellClient();
     const onVolumeLevel = vi.fn();
 
-    await client.startHoldToTalkCapture({ hotkey: 'CapsLock', onVolumeLevel });
+    await client.startHoldToTalkCapture({ hotkey: 'F9', onVolumeLevel });
     volumeHandler?.({ payload: { volumeLevel: 0.42 } });
     volumeHandler?.({ payload: { volumeLevel: 2 } });
     volumeHandler?.({ payload: { volumeLevel: -1 } });
@@ -523,6 +627,86 @@ describe('desktopShell', () => {
     expect(onVolumeLevel).toHaveBeenNthCalledWith(3, 0);
     expect(onVolumeLevel).toHaveBeenCalledTimes(3);
     expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it('continues Tauri native capture when native volume event subscription fails', async () => {
+    const invoke = vi.fn(async (command: string, args?: unknown) => {
+      if (command === 'honey_start_hold_to_talk_capture') {
+        return {
+          ok: true,
+          state: 'listening',
+          hotkey: (args as { hotkey: string }).hotkey,
+          audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+        };
+      }
+
+      if (command === 'honey_finish_hold_to_talk_capture') {
+        return {
+          ok: true,
+          state: 'captured',
+          hotkey: 'F9',
+          audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+        };
+      }
+
+      throw new Error(`unexpected command ${command}`);
+    });
+    const listen = vi.fn(async () => {
+      throw new Error('event listen unavailable');
+    });
+
+    window.__TAURI__ = {
+      core: { invoke },
+      event: { listen },
+    };
+    const client = createDesktopShellClient();
+
+    await expect(client.startHoldToTalkCapture({
+      hotkey: 'F9',
+      onVolumeLevel: vi.fn(),
+    })).resolves.toMatchObject({
+      state: 'listening',
+      audioPath: 'C:\\Users\\benlin\\AppData\\Local\\Temp\\honey\\captures\\hold-to-talk.wav',
+    });
+    await expect(client.finishHoldToTalkCapture()).resolves.toMatchObject({
+      state: 'captured',
+    });
+    expect(listen).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith('honey_start_hold_to_talk_capture', { hotkey: 'F9' });
+  });
+
+  it('reads Tauri native microphone input diagnostics', async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === 'honey_get_audio_input_diagnostics') {
+        return {
+          ok: true,
+          available: true,
+          backend: 'Wasapi',
+          defaultDeviceName: 'Microphone Array',
+          sampleFormat: 'f32',
+          channels: 2,
+          sampleRate: 48000,
+          inputDevices: ['Microphone Array'],
+        };
+      }
+
+      throw new Error(`unexpected command ${command}`);
+    });
+
+    window.__TAURI__ = { core: { invoke } };
+    const client = createDesktopShellClient();
+
+    await expect(client.getAudioInputDiagnostics()).resolves.toEqual({
+      ok: true,
+      available: true,
+      backend: 'Wasapi',
+      defaultDeviceName: 'Microphone Array',
+      sampleFormat: 'f32',
+      channels: 2,
+      sampleRate: 48000,
+      inputDevices: ['Microphone Array'],
+    });
+    expect(invoke).toHaveBeenCalledWith('honey_get_audio_input_diagnostics');
   });
 
   it('registers Tauri global hold-to-talk hotkeys and listens for pressed state changes', async () => {
@@ -540,7 +724,7 @@ describe('desktopShell', () => {
       if (command === 'honey_unregister_hold_to_talk_hotkey') {
         return {
           ok: true,
-          hotkey: 'CapsLock',
+          hotkey: 'F9',
         };
       }
 
@@ -559,27 +743,27 @@ describe('desktopShell', () => {
     const client = createDesktopShellClient();
     const onHotkey = vi.fn();
 
-    await expect(client.registerHoldToTalkHotkey({ hotkey: 'CapsLock' })).resolves.toEqual({
+    await expect(client.registerHoldToTalkHotkey({ hotkey: 'F9' })).resolves.toEqual({
       ok: true,
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
       event: 'honey://hold-to-talk-hotkey',
     });
     const dispose = await client.onHoldToTalkHotkey(onHotkey);
 
-    hotkeyHandler?.({ payload: { hotkey: 'CapsLock', state: 'pressed' } });
-    hotkeyHandler?.({ payload: { hotkey: 'CapsLock', state: 'released' } });
-    hotkeyHandler?.({ payload: { hotkey: 'CapsLock', state: 'stuck' } });
+    hotkeyHandler?.({ payload: { hotkey: 'F9', state: 'pressed' } });
+    hotkeyHandler?.({ payload: { hotkey: 'F9', state: 'released' } });
+    hotkeyHandler?.({ payload: { hotkey: 'F9', state: 'stuck' } });
     dispose();
     await expect(client.unregisterHoldToTalkHotkey()).resolves.toEqual({
       ok: true,
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
     });
 
-    expect(invoke).toHaveBeenCalledWith('honey_register_hold_to_talk_hotkey', { hotkey: 'CapsLock' });
+    expect(invoke).toHaveBeenCalledWith('honey_register_hold_to_talk_hotkey', { hotkey: 'F9' });
     expect(listen).toHaveBeenCalledOnce();
     expect(onHotkey).toHaveBeenCalledTimes(2);
-    expect(onHotkey).toHaveBeenNthCalledWith(1, { hotkey: 'CapsLock', state: 'pressed' });
-    expect(onHotkey).toHaveBeenNthCalledWith(2, { hotkey: 'CapsLock', state: 'released' });
+    expect(onHotkey).toHaveBeenNthCalledWith(1, { hotkey: 'F9', state: 'pressed' });
+    expect(onHotkey).toHaveBeenNthCalledWith(2, { hotkey: 'F9', state: 'released' });
     expect(unlisten).toHaveBeenCalledOnce();
     expect(invoke).toHaveBeenCalledWith('honey_unregister_hold_to_talk_hotkey');
   });
@@ -676,7 +860,7 @@ describe('desktopShell', () => {
         invoke: vi.fn(async () => ({
           ok: true,
           state: 'captured',
-          hotkey: 'CapsLock',
+          hotkey: 'F9',
           audioPath: 'mock://tauri-hold-to-talk.wav',
         })),
       },

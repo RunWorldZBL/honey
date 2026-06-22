@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+﻿import { describe, expect, it, vi } from 'vitest';
 
 import type { BackendClient } from './client';
 import type { DesktopShellClient } from './desktopShell';
@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => {
   const httpClient = {
     listTranscriptRecords: vi.fn(async () => []),
     getSettings: vi.fn(async () => ({
-      hotkey: 'CapsLock',
+      hotkey: 'F9',
       defaultMode: 'direct',
       defaultPersonaId: 'persona-office',
       defaultAsrModelId: 'fun-asr-nano',

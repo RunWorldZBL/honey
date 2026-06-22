@@ -135,6 +135,52 @@ async function testTranscriptionRunsCtcAndReportsEmptyTranscriptForSilence() {
   }
 }
 
+async function testShortAudioIsPaddedBeforeCtcInference() {
+  const tempDir = await mkdtemp(join(tmpdir(), 'honey-fun-asr-nano-short-silence-'));
+  const audioPath = join(tempDir, 'short-silence.wav');
+
+  try {
+    await writeFile(audioPath, createSilentWav(16_000, 8_000));
+
+    await transcribeWithFunAsrNano({
+      audioPath,
+      modelId: 'fun-asr-nano',
+      modelRoot: '../Fun-ASR-Nano-GGUF',
+    }).then(
+      () => {
+        throw new Error('Fun-ASR-Nano transcription should reject short silence as empty speech');
+      },
+      (error: unknown) => {
+        assertEqual(
+          error instanceof Error && error.message.includes('fun_asr_nano_empty_transcript'),
+          true,
+          'Fun-ASR-Nano transcription should pad short audio and report empty speech instead of ONNX GatherND errors',
+        );
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function testNospeechTokenIsTreatedAsEmptyTranscript() {
+  const tempDir = await mkdtemp(join(tmpdir(), 'honey-fun-asr-nano-nospeech-token-'));
+
+  try {
+    await writeFile(join(tempDir, 'tokens.txt'), [
+      'PHxub3NwZWVjaHw+ 0',
+      '5L2g 1',
+      'IGJsYW5r 2',
+    ].join('\n'), 'utf8');
+
+    const text = await decodeFunAsrNanoCtcIndices([0, 2, 0], tempDir);
+
+    assertEqual(text, '', 'Fun-ASR-Nano CTC decoder should treat nospeech control tokens as empty text');
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function testCliReturnsJsonErrorWhenTranscriptIsEmpty() {
   const tempDir = await mkdtemp(join(tmpdir(), 'honey-fun-asr-nano-cli-silence-'));
   const audioPath = join(tempDir, 'silence.wav');
@@ -168,4 +214,6 @@ await testModelReadinessRejectsMissingFiles();
 await testCtcDecoderCollapsesBlankAndRepeatedTokens();
 await testRuntimeIssueReportsMissingAudioDecoder();
 await testTranscriptionRunsCtcAndReportsEmptyTranscriptForSilence();
+await testShortAudioIsPaddedBeforeCtcInference();
+await testNospeechTokenIsTreatedAsEmptyTranscript();
 await testCliReturnsJsonErrorWhenTranscriptIsEmpty();

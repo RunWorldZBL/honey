@@ -7,6 +7,8 @@ use std::{env, net::TcpStream};
 #[cfg(not(test))]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 #[cfg(not(test))]
+use cpal::{FromSample, Sample, SizedSample};
+#[cfg(not(test))]
 use std::sync::mpsc;
 #[cfg(not(test))]
 use std::thread::{self, JoinHandle};
@@ -17,8 +19,9 @@ use tauri::menu::MenuBuilder;
 #[cfg(not(test))]
 use tauri::tray::TrayIconBuilder;
 use tauri::Emitter;
-#[cfg(not(test))]
 use tauri::Manager;
+#[cfg(not(test))]
+use tauri::{PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -30,8 +33,10 @@ static REGISTERED_HOLD_TO_TALK_HOTKEY: OnceLock<Mutex<Option<String>>> = OnceLoc
 static BACKEND_PROCESS: OnceLock<Mutex<BackendProcessState>> = OnceLock::new();
 static TRAY_ENABLED: OnceLock<Mutex<bool>> = OnceLock::new();
 static STARTUP_ENABLED: OnceLock<Mutex<bool>> = OnceLock::new();
+static DICTATION_OVERLAY_CENTER_OFFSET_X: OnceLock<Mutex<i32>> = OnceLock::new();
 
 const HOLD_TO_TALK_HOTKEY_EVENT: &str = "honey://hold-to-talk-hotkey";
+const DICTATION_OVERLAY_SNAPSHOT_EVENT: &str = "honey://dictation-overlay-snapshot";
 #[cfg(not(test))]
 const DESKTOP_WINDOW_MODE_EVENT: &str = "honey://desktop-window-mode";
 #[cfg(not(test))]
@@ -39,6 +44,11 @@ const HOLD_TO_TALK_VOLUME_EVENT: &str = "honey://hold-to-talk-volume";
 const DEFAULT_BACKEND_HOST: &str = "127.0.0.1";
 const DEFAULT_BACKEND_PORT: u16 = 33577;
 const HOLD_TO_TALK_SAMPLE_RATE: u32 = 16_000;
+const DICTATION_OVERLAY_WINDOW_LABEL: &str = "dictation-overlay";
+const DICTATION_OVERLAY_WINDOW_WIDTH: u32 = 260;
+const DICTATION_OVERLAY_WINDOW_HEIGHT: u32 = 56;
+const DICTATION_OVERLAY_BOTTOM_MARGIN: i32 = 0;
+const WINDOWS_TEXT_INSERTION_ENV_KEY: &str = "HONEY_INSERT_TEXT";
 #[cfg(not(test))]
 const HOLD_TO_TALK_VOLUME_INTERVAL_MS: u64 = 48;
 #[cfg(not(test))]
@@ -108,7 +118,7 @@ fn hold_to_talk_capture() -> &'static Mutex<HoldToTalkCapture> {
     HOLD_TO_TALK_CAPTURE.get_or_init(|| {
         Mutex::new(HoldToTalkCapture {
             state: "cancelled".to_string(),
-            hotkey: "CapsLock".to_string(),
+            hotkey: "F9".to_string(),
             audio_path: None,
             recorder: None,
         })
@@ -131,8 +141,155 @@ fn startup_enabled() -> &'static Mutex<bool> {
     STARTUP_ENABLED.get_or_init(|| Mutex::new(false))
 }
 
+fn dictation_overlay_center_offset_x() -> &'static Mutex<i32> {
+    DICTATION_OVERLAY_CENTER_OFFSET_X.get_or_init(|| Mutex::new(0))
+}
+
 fn should_hide_window_on_close(window_label: &str, tray_enabled: bool) -> bool {
     window_label == "main" && tray_enabled
+}
+
+fn resolve_overlay_window_position(
+    work_area_x: i32,
+    work_area_y: i32,
+    work_area_width: u32,
+    work_area_height: u32,
+    window_width: u32,
+    window_height: u32,
+    position: &str,
+    center_offset_x: i32,
+) -> (i32, i32) {
+    let work_area_width = work_area_width as i32;
+    let work_area_height = work_area_height as i32;
+    let window_width = window_width as i32;
+    let window_height = window_height as i32;
+    let x = match position {
+        "bottom-left" => work_area_x + 24,
+        "bottom-right" => work_area_x + work_area_width - window_width - 24,
+        _ => work_area_x + (work_area_width - window_width) / 2 + center_offset_x,
+    };
+    let y = work_area_y + work_area_height - window_height - DICTATION_OVERLAY_BOTTOM_MARGIN;
+
+    (x, y)
+}
+
+fn normalize_overlay_position(position: Option<String>) -> String {
+    match position.as_deref() {
+        Some("bottom-left") => "bottom-left".to_string(),
+        Some("bottom-right") => "bottom-right".to_string(),
+        _ => "bottom-center".to_string(),
+    }
+}
+
+#[cfg(not(test))]
+fn resolve_primary_overlay_position(
+    app: &tauri::AppHandle,
+    position: &str,
+) -> Result<PhysicalPosition<i32>, String> {
+    let monitor = app
+        .primary_monitor()
+        .map_err(|error| format!("overlay_monitor_unavailable:{error}"))?
+        .ok_or_else(|| "overlay_monitor_unavailable".to_string())?;
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let work_area = monitor.work_area();
+    let work_area_position = work_area.position;
+    let work_area_size = work_area.size;
+    let center_offset_x = *dictation_overlay_center_offset_x()
+        .lock()
+        .expect("dictation overlay center offset lock poisoned");
+    let (x, y) = resolve_overlay_window_position(
+        work_area_position.x,
+        work_area_position.y,
+        work_area_size.width,
+        work_area_size.height,
+        DICTATION_OVERLAY_WINDOW_WIDTH,
+        DICTATION_OVERLAY_WINDOW_HEIGHT,
+        position,
+        center_offset_x,
+    );
+    append_desktop_log(&format!(
+        "overlay_position_resolved:position={position}; monitor_x={}; monitor_y={}; monitor_width={}; monitor_height={}; work_area_x={}; work_area_y={}; work_area_width={}; work_area_height={}; window_width={}; window_height={}; center_offset_x={center_offset_x}; x={x}; y={y}",
+        monitor_position.x,
+        monitor_position.y,
+        monitor_size.width,
+        monitor_size.height,
+        work_area_position.x,
+        work_area_position.y,
+        work_area_size.width,
+        work_area_size.height,
+        DICTATION_OVERLAY_WINDOW_WIDTH,
+        DICTATION_OVERLAY_WINDOW_HEIGHT,
+    ));
+
+    Ok(PhysicalPosition::new(x, y))
+}
+
+#[cfg(not(test))]
+fn position_overlay_window(app: &tauri::AppHandle, position: &str) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(DICTATION_OVERLAY_WINDOW_LABEL) else {
+        return Err("overlay_window_unavailable".to_string());
+    };
+    let window_position = resolve_primary_overlay_position(app, position)?;
+    window
+        .set_position(window_position)
+        .map_err(|error| format!("overlay_position_failed:{error}"))?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+fn position_overlay_window(_app: &tauri::AppHandle, _position: &str) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(test))]
+fn setup_overlay_window(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let window_position = resolve_primary_overlay_position(app.handle(), "bottom-center")
+        .unwrap_or_else(|_| PhysicalPosition::new(0, 0));
+    let overlay_window = WebviewWindowBuilder::new(
+        app,
+        DICTATION_OVERLAY_WINDOW_LABEL,
+        WebviewUrl::App("index.html".into()),
+    )
+    .initialization_script(
+        r#"
+          window.__HONEY_WINDOW_LABEL__ = 'dictation-overlay';
+          try { window.name = 'dictation-overlay'; } catch {}
+        "#,
+    )
+    .title("honey dictation overlay")
+    .inner_size(
+        DICTATION_OVERLAY_WINDOW_WIDTH as f64,
+        DICTATION_OVERLAY_WINDOW_HEIGHT as f64,
+    )
+    .min_inner_size(
+        DICTATION_OVERLAY_WINDOW_WIDTH as f64,
+        DICTATION_OVERLAY_WINDOW_HEIGHT as f64,
+    )
+    .position(window_position.x as f64, window_position.y as f64)
+    .decorations(false)
+    .resizable(false)
+    .minimizable(false)
+    .maximizable(false)
+    .closable(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .focusable(false)
+    .transparent(true)
+    .background_color(tauri::window::Color(0, 0, 0, 0))
+    .shadow(false)
+    .visible(false)
+    .build()?;
+
+    let _ = overlay_window.set_size(PhysicalSize::new(
+        DICTATION_OVERLAY_WINDOW_WIDTH,
+        DICTATION_OVERLAY_WINDOW_HEIGHT,
+    ));
+    let _ = overlay_window.set_ignore_cursor_events(true);
+
+    Ok(())
 }
 
 fn set_desktop_window_mode_state(mode: &str) -> Result<String, String> {
@@ -482,6 +639,94 @@ fn hold_to_talk_capture_json(capture: &HoldToTalkCapture) -> serde_json::Value {
     value
 }
 
+fn append_desktop_log(message: &str) {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().to_string())
+        .unwrap_or_else(|_| "unknown-time".to_string());
+    let mut path = std::env::temp_dir();
+    path.push("honey");
+    path.push("logs");
+    let _ = std::fs::create_dir_all(&path);
+    path.push("desktop.log");
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = std::io::Write::write_all(
+            &mut file,
+            format!("[{timestamp}] {message}\n").as_bytes(),
+        );
+    }
+}
+
+#[cfg(test)]
+fn audio_input_diagnostics_json() -> serde_json::Value {
+    serde_json::json!({
+        "ok": true,
+        "available": true,
+        "backend": "test",
+        "defaultDeviceName": "test microphone",
+        "sampleFormat": "f32",
+        "channels": 1,
+        "sampleRate": HOLD_TO_TALK_SAMPLE_RATE,
+        "inputDevices": ["test microphone"]
+    })
+}
+
+#[cfg(not(test))]
+fn audio_input_diagnostics_json() -> serde_json::Value {
+    let host = cpal::default_host();
+    let backend = format!("{:?}", host.id());
+    let input_devices = match host.input_devices() {
+        Ok(devices) => devices
+            .filter_map(|device| device.name().ok())
+            .collect::<Vec<String>>(),
+        Err(_) => Vec::new(),
+    };
+
+    let Some(device) = host.default_input_device() else {
+        return serde_json::json!({
+            "ok": true,
+            "available": false,
+            "backend": backend,
+            "inputDevices": input_devices,
+            "error": "capture_input_device_unavailable"
+        });
+    };
+
+    let default_device_name = device
+        .name()
+        .unwrap_or_else(|_| "unknown input device".to_string());
+    let supported_config = match device.default_input_config() {
+        Ok(config) => config,
+        Err(error) => {
+            return serde_json::json!({
+                "ok": true,
+                "available": false,
+                "backend": backend,
+                "defaultDeviceName": default_device_name,
+                "inputDevices": input_devices,
+                "error": format!("capture_input_config_unavailable:{error}")
+            });
+        }
+    };
+    let stream_config = supported_config.config();
+
+    serde_json::json!({
+        "ok": true,
+        "available": true,
+        "backend": backend,
+        "defaultDeviceName": default_device_name,
+        "sampleFormat": supported_config.sample_format().to_string(),
+        "channels": stream_config.channels,
+        "sampleRate": stream_config.sample_rate.0,
+        "inputDevices": input_devices
+    })
+}
+
 fn create_hold_to_talk_audio_path() -> Result<PathBuf, String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -564,45 +809,56 @@ fn run_native_audio_capture(
     let source_sample_rate = stream_config.sample_rate.0;
 
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => {
-            let callback_samples = Arc::clone(&samples);
-            let mut volume_reporter = create_native_volume_reporter();
-            device.build_input_stream(
-                &stream_config,
-                move |data: &[f32], _| {
-                    let (sum_squares, sample_count) = append_f32_samples(data, &callback_samples);
-                    emit_native_volume_level(&mut volume_reporter, sum_squares, sample_count);
-                },
-                native_audio_error_callback,
-                None,
-            )
-        }
-        cpal::SampleFormat::I16 => {
-            let callback_samples = Arc::clone(&samples);
-            let mut volume_reporter = create_native_volume_reporter();
-            device.build_input_stream(
-                &stream_config,
-                move |data: &[i16], _| {
-                    let (sum_squares, sample_count) = append_i16_samples(data, &callback_samples);
-                    emit_native_volume_level(&mut volume_reporter, sum_squares, sample_count);
-                },
-                native_audio_error_callback,
-                None,
-            )
-        }
-        cpal::SampleFormat::U16 => {
-            let callback_samples = Arc::clone(&samples);
-            let mut volume_reporter = create_native_volume_reporter();
-            device.build_input_stream(
-                &stream_config,
-                move |data: &[u16], _| {
-                    let (sum_squares, sample_count) = append_u16_samples(data, &callback_samples);
-                    emit_native_volume_level(&mut volume_reporter, sum_squares, sample_count);
-                },
-                native_audio_error_callback,
-                None,
-            )
-        }
+        cpal::SampleFormat::I8 => build_native_input_stream::<i8>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::I16 => build_native_input_stream::<i16>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::I32 => build_native_input_stream::<i32>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::I64 => build_native_input_stream::<i64>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::U8 => build_native_input_stream::<u8>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::U16 => build_native_input_stream::<u16>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::U32 => build_native_input_stream::<u32>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::U64 => build_native_input_stream::<u64>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::F32 => build_native_input_stream::<f32>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
+        cpal::SampleFormat::F64 => build_native_input_stream::<f64>(
+            &device,
+            &stream_config,
+            Arc::clone(&samples),
+        ),
         unsupported => {
             let message = format!("capture_input_sample_format_unsupported:{unsupported:?}");
             let _ = ready_sender.send(Err(message.clone()));
@@ -635,12 +891,35 @@ fn native_audio_error_callback(error: cpal::StreamError) {
     eprintln!("honey native audio capture error: {error}");
 }
 
+#[cfg(not(test))]
+fn build_native_input_stream<T>(
+    device: &cpal::Device,
+    stream_config: &cpal::StreamConfig,
+    samples: Arc<Mutex<Vec<f32>>>,
+) -> Result<cpal::Stream, cpal::BuildStreamError>
+where
+    T: SizedSample + Send + 'static,
+    f32: FromSample<T>,
+{
+    let mut volume_reporter = create_native_volume_reporter();
+    device.build_input_stream(
+        stream_config,
+        move |data: &[T], _| {
+            let (sum_squares, sample_count) = append_samples(data, &samples);
+            emit_native_volume_level(&mut volume_reporter, sum_squares, sample_count);
+        },
+        native_audio_error_callback,
+        None,
+    )
+}
+
 fn rms_volume_level_from_sum(sum_squares: f32, sample_count: usize) -> f32 {
     if sample_count == 0 || sum_squares <= 0.0 {
         return 0.0;
     }
 
-    (sum_squares / sample_count as f32).sqrt().clamp(0.0, 1.0)
+    let rms = (sum_squares / sample_count as f32).sqrt();
+    (rms * 28.0).sqrt().clamp(0.0, 1.0)
 }
 
 #[cfg(not(test))]
@@ -679,63 +958,23 @@ fn emit_native_volume_level(
 }
 
 #[cfg(not(test))]
-fn append_f32_samples(input: &[f32], samples: &Arc<Mutex<Vec<f32>>>) -> (f32, usize) {
+fn append_samples<T>(input: &[T], samples: &Arc<Mutex<Vec<f32>>>) -> (f32, usize)
+where
+    T: Sample,
+    f32: FromSample<T>,
+{
     let mut sum_squares = 0.0;
     let mut sample_count = 0;
     if let Ok(mut output) = samples.lock() {
         for sample in input {
-            let normalized = sample.clamp(-1.0, 1.0);
+            let normalized = f32::from_sample(*sample).clamp(-1.0, 1.0);
             sum_squares += normalized * normalized;
             sample_count += 1;
             output.push(normalized);
         }
     } else {
         for sample in input {
-            let normalized = sample.clamp(-1.0, 1.0);
-            sum_squares += normalized * normalized;
-            sample_count += 1;
-        }
-    }
-
-    (sum_squares, sample_count)
-}
-
-#[cfg(not(test))]
-fn append_i16_samples(input: &[i16], samples: &Arc<Mutex<Vec<f32>>>) -> (f32, usize) {
-    let mut sum_squares = 0.0;
-    let mut sample_count = 0;
-    if let Ok(mut output) = samples.lock() {
-        for sample in input {
-            let normalized = (f32::from(*sample) / f32::from(i16::MAX)).clamp(-1.0, 1.0);
-            sum_squares += normalized * normalized;
-            sample_count += 1;
-            output.push(normalized);
-        }
-    } else {
-        for sample in input {
-            let normalized = (f32::from(*sample) / f32::from(i16::MAX)).clamp(-1.0, 1.0);
-            sum_squares += normalized * normalized;
-            sample_count += 1;
-        }
-    }
-
-    (sum_squares, sample_count)
-}
-
-#[cfg(not(test))]
-fn append_u16_samples(input: &[u16], samples: &Arc<Mutex<Vec<f32>>>) -> (f32, usize) {
-    let mut sum_squares = 0.0;
-    let mut sample_count = 0;
-    if let Ok(mut output) = samples.lock() {
-        for sample in input {
-            let normalized = ((f32::from(*sample) - 32768.0) / 32768.0).clamp(-1.0, 1.0);
-            sum_squares += normalized * normalized;
-            sample_count += 1;
-            output.push(normalized);
-        }
-    } else {
-        for sample in input {
-            let normalized = ((f32::from(*sample) - 32768.0) / 32768.0).clamp(-1.0, 1.0);
+            let normalized = f32::from_sample(*sample).clamp(-1.0, 1.0);
             sum_squares += normalized * normalized;
             sample_count += 1;
         }
@@ -938,15 +1177,21 @@ pub fn run() {
             let _ = APP_HANDLE.set(app.handle().clone());
             #[cfg(not(test))]
             setup_tray(app)?;
+            #[cfg(not(test))]
+            setup_overlay_window(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             honey_desktop_capabilities,
+            honey_get_audio_input_diagnostics,
             honey_get_backend_process_status,
             honey_start_backend_process,
             honey_stop_backend_process,
             honey_get_desktop_window_mode,
             honey_set_desktop_window_mode,
+            honey_publish_dictation_overlay_snapshot,
+            honey_set_overlay_window_visible,
+            honey_set_overlay_center_offset,
             honey_set_tray_enabled,
             honey_set_startup_enabled,
             honey_pick_audio_file,
@@ -976,6 +1221,11 @@ fn honey_desktop_capabilities() -> serde_json::Value {
         "canPreviewHoldToTalk": true,
         "canManageBackend": true
     })
+}
+
+#[tauri::command]
+fn honey_get_audio_input_diagnostics() -> serde_json::Value {
+    audio_input_diagnostics_json()
 }
 
 #[tauri::command]
@@ -1102,6 +1352,81 @@ fn honey_set_desktop_window_mode(mode: String) -> Result<serde_json::Value, Stri
 }
 
 #[tauri::command]
+fn honey_publish_dictation_overlay_snapshot(
+    app: tauri::AppHandle,
+    snapshot: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    append_desktop_log(&format!("overlay_snapshot_publish:{snapshot}"));
+    if let Some(window) = app.get_webview_window(DICTATION_OVERLAY_WINDOW_LABEL) {
+        window
+            .emit(
+                DICTATION_OVERLAY_SNAPSHOT_EVENT,
+                serde_json::json!({ "snapshot": snapshot }),
+            )
+            .map_err(|error| format!("overlay_snapshot_publish_failed:{error}"))?;
+    }
+
+    Ok(serde_json::json!({
+        "ok": true
+    }))
+}
+
+#[tauri::command]
+fn honey_set_overlay_window_visible(
+    app: tauri::AppHandle,
+    visible: bool,
+    position: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let position = normalize_overlay_position(position);
+    append_desktop_log(&format!(
+        "overlay_window_visible_request:visible={visible}; position={position}"
+    ));
+    if let Some(window) = app.get_webview_window(DICTATION_OVERLAY_WINDOW_LABEL) {
+        if visible {
+            position_overlay_window(&app, &position)?;
+            window
+                .show()
+                .map_err(|error| format!("overlay_show_failed:{error}"))?;
+            append_desktop_log("overlay_window_visible_applied:show");
+        } else {
+            window
+                .hide()
+                .map_err(|error| format!("overlay_hide_failed:{error}"))?;
+            append_desktop_log("overlay_window_visible_applied:hide");
+        }
+    } else {
+        append_desktop_log("overlay_window_visible_skipped:window_missing");
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "visible": visible
+    }))
+}
+
+#[tauri::command]
+fn honey_set_overlay_center_offset(
+    app: tauri::AppHandle,
+    offset_x: i32,
+    position: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let clamped_offset_x = offset_x.clamp(-500, 500);
+    *dictation_overlay_center_offset_x()
+        .lock()
+        .expect("dictation overlay center offset lock poisoned") = clamped_offset_x;
+    let position = normalize_overlay_position(position);
+    append_desktop_log(&format!(
+        "overlay_center_offset_set:offset_x={clamped_offset_x}; position={position}"
+    ));
+    let _ = position_overlay_window(&app, &position);
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "offsetX": clamped_offset_x
+    }))
+}
+
+#[tauri::command]
 fn honey_set_tray_enabled(enabled: bool) -> Result<serde_json::Value, String> {
     *tray_enabled().lock().expect("tray enabled lock poisoned") = enabled;
 
@@ -1191,6 +1516,7 @@ fn honey_register_hold_to_talk_hotkey(
         .lock()
         .expect("registered hold-to-talk hotkey lock poisoned");
     if registered_hotkey.as_ref() == Some(&normalized_hotkey) {
+        append_desktop_log(&format!("hotkey_register_reused:{normalized_hotkey}"));
         return Ok(serde_json::json!({
             "ok": true,
             "hotkey": normalized_hotkey,
@@ -1207,6 +1533,11 @@ fn honey_register_hold_to_talk_hotkey(
     let hotkey_for_handler = normalized_hotkey.clone();
     app.global_shortcut()
         .on_shortcut(normalized_hotkey.as_str(), move |app, _shortcut, event| {
+            append_desktop_log(&format!(
+                "hotkey_event:hotkey={}; state={}",
+                hotkey_for_handler,
+                shortcut_state_name(event.state)
+            ));
             let _ = app.emit(
                 HOLD_TO_TALK_HOTKEY_EVENT,
                 serde_json::json!({
@@ -1218,6 +1549,7 @@ fn honey_register_hold_to_talk_hotkey(
         .map_err(|error| format!("hotkey_register_failed:{error}"))?;
 
     *registered_hotkey = Some(normalized_hotkey.clone());
+    append_desktop_log(&format!("hotkey_register_ok:{normalized_hotkey}"));
 
     Ok(serde_json::json!({
         "ok": true,
@@ -1250,6 +1582,19 @@ fn honey_unregister_hold_to_talk_hotkey(
 
 #[tauri::command]
 fn honey_start_hold_to_talk_capture(hotkey: String) -> Result<serde_json::Value, String> {
+    let result = honey_start_hold_to_talk_capture_inner(hotkey);
+    match &result {
+        Ok(value) => append_desktop_log(&format!("capture_start_ok:{value}")),
+        Err(error) => append_desktop_log(&format!(
+            "capture_start_failed:{error}; diagnostics={}",
+            audio_input_diagnostics_json()
+        )),
+    }
+
+    result
+}
+
+fn honey_start_hold_to_talk_capture_inner(hotkey: String) -> Result<serde_json::Value, String> {
     let normalized_hotkey = hotkey.trim().to_string();
     if normalized_hotkey.is_empty() {
         return Err("invalid_hotkey".to_string());
@@ -1284,6 +1629,16 @@ fn honey_start_hold_to_talk_capture(hotkey: String) -> Result<serde_json::Value,
 
 #[tauri::command]
 fn honey_finish_hold_to_talk_capture() -> Result<serde_json::Value, String> {
+    let result = honey_finish_hold_to_talk_capture_inner();
+    match &result {
+        Ok(value) => append_desktop_log(&format!("capture_finish_ok:{value}")),
+        Err(error) => append_desktop_log(&format!("capture_finish_failed:{error}")),
+    }
+
+    result
+}
+
+fn honey_finish_hold_to_talk_capture_inner() -> Result<serde_json::Value, String> {
     let mut capture = hold_to_talk_capture()
         .lock()
         .expect("hold-to-talk capture lock poisoned");
@@ -1303,6 +1658,16 @@ fn honey_finish_hold_to_talk_capture() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 fn honey_cancel_hold_to_talk_capture() -> Result<serde_json::Value, String> {
+    let result = honey_cancel_hold_to_talk_capture_inner();
+    match &result {
+        Ok(value) => append_desktop_log(&format!("capture_cancel_ok:{value}")),
+        Err(error) => append_desktop_log(&format!("capture_cancel_failed:{error}")),
+    }
+
+    result
+}
+
+fn honey_cancel_hold_to_talk_capture_inner() -> Result<serde_json::Value, String> {
     let mut capture = hold_to_talk_capture()
         .lock()
         .expect("hold-to-talk capture lock poisoned");
@@ -1352,13 +1717,13 @@ fn windows_text_insertion_script(
 ) -> Result<&'static str, String> {
     match (method, restore_clipboard) {
         ("paste", true) => Ok(
-            "Add-Type -AssemblyName System.Windows.Forms; $hadText = [System.Windows.Forms.Clipboard]::ContainsText(); $previousClipboardText = if ($hadText) { [System.Windows.Forms.Clipboard]::GetText() } else { $null }; [System.Windows.Forms.Clipboard]::SetText($args[0]); Start-Sleep -Milliseconds 50; [System.Windows.Forms.SendKeys]::SendWait('^v'); Start-Sleep -Milliseconds 50; if ($hadText) { [System.Windows.Forms.Clipboard]::SetText($previousClipboardText) } else { [System.Windows.Forms.Clipboard]::Clear() }",
+            "Add-Type -AssemblyName System.Windows.Forms; $text = [Environment]::GetEnvironmentVariable('HONEY_INSERT_TEXT'); $hadText = [System.Windows.Forms.Clipboard]::ContainsText(); $previousClipboardText = if ($hadText) { [System.Windows.Forms.Clipboard]::GetText() } else { $null }; [System.Windows.Forms.Clipboard]::SetText($text); Start-Sleep -Milliseconds 50; [System.Windows.Forms.SendKeys]::SendWait('^v'); Start-Sleep -Milliseconds 50; if ($hadText) { [System.Windows.Forms.Clipboard]::SetText($previousClipboardText) } else { [System.Windows.Forms.Clipboard]::Clear() }",
         ),
         ("paste", false) => Ok(
-            "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetText($args[0]); Start-Sleep -Milliseconds 50; [System.Windows.Forms.SendKeys]::SendWait('^v')",
+            "Add-Type -AssemblyName System.Windows.Forms; $text = [Environment]::GetEnvironmentVariable('HONEY_INSERT_TEXT'); [System.Windows.Forms.Clipboard]::SetText($text); Start-Sleep -Milliseconds 50; [System.Windows.Forms.SendKeys]::SendWait('^v')",
         ),
         ("typing", _) => Ok(
-            "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait($args[0])",
+            "Add-Type -AssemblyName System.Windows.Forms; $text = [Environment]::GetEnvironmentVariable('HONEY_INSERT_TEXT'); [System.Windows.Forms.SendKeys]::SendWait($text)",
         ),
         _ => Err("invalid_insertion_method".to_string()),
     }
@@ -1372,7 +1737,8 @@ fn run_windows_text_insertion(
     let script = windows_text_insertion_script(method, restore_clipboard)?;
 
     let status = Command::new("powershell.exe")
-        .args(["-NoProfile", "-STA", "-Command", script, "--", text])
+        .env(WINDOWS_TEXT_INSERTION_ENV_KEY, text)
+        .args(["-NoProfile", "-STA", "-Command", script])
         .status()
         .map_err(|error| format!("text_insertion_unavailable:{error}"))?;
 
@@ -1433,13 +1799,121 @@ mod tests {
     fn calculates_hold_to_talk_volume_level() {
         assert_eq!(rms_volume_level_from_sum(0.0, 0), 0.0);
         assert_eq!(rms_volume_level_from_sum(0.0, 3), 0.0);
-        assert!((rms_volume_level_from_sum(0.25, 1) - 0.5).abs() < f32::EPSILON);
+        assert_eq!(rms_volume_level_from_sum(0.25, 1), 1.0);
+        assert!(rms_volume_level_from_sum(0.0004, 1) > 0.1);
         assert_eq!(rms_volume_level_from_sum(9.0, 1), 1.0);
     }
 
     #[test]
+    fn resolves_overlay_window_position_at_work_area_bottom() {
+        assert_eq!(
+            resolve_overlay_window_position(
+                0,
+                0,
+                1920,
+                1080,
+                DICTATION_OVERLAY_WINDOW_WIDTH,
+                DICTATION_OVERLAY_WINDOW_HEIGHT,
+                "bottom-center",
+                0,
+            ),
+            (830, 1024),
+        );
+        assert_eq!(
+            resolve_overlay_window_position(
+                0,
+                0,
+                1920,
+                1080,
+                DICTATION_OVERLAY_WINDOW_WIDTH,
+                DICTATION_OVERLAY_WINDOW_HEIGHT,
+                "bottom-left",
+                0,
+            ),
+            (24, 1024),
+        );
+        assert_eq!(
+            resolve_overlay_window_position(
+                0,
+                0,
+                1920,
+                1080,
+                DICTATION_OVERLAY_WINDOW_WIDTH,
+                DICTATION_OVERLAY_WINDOW_HEIGHT,
+                "bottom-right",
+                0,
+            ),
+            (1636, 1024),
+        );
+    }
+
+    #[test]
+    fn applies_dynamic_overlay_center_offset() {
+        assert_eq!(
+            resolve_overlay_window_position(
+                0,
+                0,
+                1920,
+                1080,
+                DICTATION_OVERLAY_WINDOW_WIDTH,
+                DICTATION_OVERLAY_WINDOW_HEIGHT,
+                "bottom-center",
+                40,
+            ),
+            (870, 1024),
+        );
+    }
+
+    #[test]
+    fn resolves_overlay_window_position_above_windows_taskbar() {
+        assert_eq!(
+            resolve_overlay_window_position(
+                0,
+                0,
+                1920,
+                1040,
+                DICTATION_OVERLAY_WINDOW_WIDTH,
+                DICTATION_OVERLAY_WINDOW_HEIGHT,
+                "bottom-center",
+                0,
+            ),
+            (830, 984),
+        );
+    }
+
+    #[test]
+    fn centers_overlay_window_inside_shifted_work_area() {
+        assert_eq!(
+            resolve_overlay_window_position(
+                80,
+                0,
+                1840,
+                1040,
+                DICTATION_OVERLAY_WINDOW_WIDTH,
+                DICTATION_OVERLAY_WINDOW_HEIGHT,
+                "bottom-center",
+                0,
+            ),
+            (870, 984),
+        );
+    }
+
+    #[test]
+    fn normalizes_overlay_position() {
+        assert_eq!(normalize_overlay_position(None), "bottom-center");
+        assert_eq!(
+            normalize_overlay_position(Some("bottom-left".to_string())),
+            "bottom-left",
+        );
+        assert_eq!(
+            normalize_overlay_position(Some("floating".to_string())),
+            "bottom-center",
+        );
+    }
+
+    #[test]
     fn stores_hold_to_talk_capture_state() {
-        let started = honey_start_hold_to_talk_capture("CapsLock".to_string())
+        let started = honey_start_hold_to_talk_capture("F9".to_string())
             .expect("capture start should be valid");
 
         assert_eq!(started["state"], "listening");
@@ -1505,12 +1979,37 @@ mod tests {
     }
 
     #[test]
+    fn text_insertion_uses_environment_variable_for_script_input() {
+        let script = windows_text_insertion_script("paste", true)
+            .expect("paste script should be valid");
+        let command = Command::new("powershell.exe")
+            .env(WINDOWS_TEXT_INSERTION_ENV_KEY, "你好你好")
+            .args(["-NoProfile", "-STA", "-Command", script])
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert!(!command.iter().any(|value| value == "--"));
+        assert!(!command.iter().any(|value| value == "你好你好"));
+        assert!(script.contains("GetEnvironmentVariable('HONEY_INSERT_TEXT')"));
+    }
+
+    #[test]
     fn desktop_capabilities_report_backend_process_management() {
         let capabilities = honey_desktop_capabilities();
 
         assert_eq!(capabilities["canManageBackend"], true);
         assert_eq!(capabilities["canUseTray"], true);
         assert_eq!(capabilities["backendBaseUrl"], "http://127.0.0.1:33577");
+    }
+
+    #[test]
+    fn audio_input_diagnostics_report_test_backend() {
+        let diagnostics = honey_get_audio_input_diagnostics();
+
+        assert_eq!(diagnostics["ok"], true);
+        assert_eq!(diagnostics["available"], true);
+        assert_eq!(diagnostics["backend"], "test");
     }
 
     #[test]

@@ -216,7 +216,7 @@ export function SettingsPage() {
                 checked={settings?.gpuAcceleration ?? false}
                 onChange={(event) => updateSettings('gpuAcceleration', event.target.checked)}
               />
-              GPU 加速占位
+              GPU 加速
             </label>
           </div>
           <FormField id="settings-overlay-position" label="浮层位置">

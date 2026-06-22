@@ -6,7 +6,6 @@ import { type AppRouteId } from '@/app/navigation';
 import { backendClient } from '@/api/client';
 import { desktopShellClient } from '@/api/desktopShell';
 import { AppShell } from '@/components/AppShell';
-import { DictationOverlay } from '@/components/DictationOverlay';
 import { MiniWindow } from '@/components/MiniWindow';
 import { useDictationHotkey } from '@/hooks/useDictationHotkey';
 import { FileTranscriptionPage } from '@/pages/FileTranscriptionPage';
@@ -113,6 +112,15 @@ export default function App() {
     };
   }, [setCurrentMode, setHotkey, setOverlayEnabled, setOverlayPosition, setOutputRuntimeSettings, setTriggerMode, setTriggerThresholdMs, setWindowMode]);
 
+  useEffect(() => {
+    const overlayVisible = overlaySnapshot.state !== 'idle';
+    void desktopShellClient.publishDictationOverlaySnapshot(overlaySnapshot).catch(() => undefined);
+    void desktopShellClient.setOverlayWindowVisible(
+      overlayEnabled && overlayVisible,
+      overlayPosition,
+    ).catch(() => undefined);
+  }, [overlayEnabled, overlayPosition, overlaySnapshot]);
+
   const page = useMemo(() => {
     switch (activeRoute) {
       case 'history':
@@ -137,26 +145,20 @@ export default function App() {
 
   if (windowMode === 'mini') {
     return (
-      <>
-        <div className="mini-stage">
-          <MiniWindow
-            mode={currentMode}
-            asrStatus={asrModelStatus}
-            latestText={latestText}
-            onOpenFull={() => setWindowMode('full')}
-          />
-        </div>
-        {overlayEnabled ? <DictationOverlay position={overlayPosition} snapshot={overlaySnapshot} /> : null}
-      </>
+      <div className="mini-stage">
+        <MiniWindow
+          mode={currentMode}
+          asrStatus={asrModelStatus}
+          latestText={latestText}
+          onOpenFull={() => setWindowMode('full')}
+        />
+      </div>
     );
   }
 
   return (
-    <>
-      <AppShell activeRoute={activeRoute} onRouteChange={setActiveRoute} onOpenMini={() => setWindowMode('mini')}>
-        {page}
-      </AppShell>
-      {overlayEnabled ? <DictationOverlay position={overlayPosition} snapshot={overlaySnapshot} /> : null}
-    </>
+    <AppShell activeRoute={activeRoute} onRouteChange={setActiveRoute} onOpenMini={() => setWindowMode('mini')}>
+      {page}
+    </AppShell>
   );
 }

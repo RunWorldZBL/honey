@@ -1,4 +1,5 @@
 import type { AudioCaptureUploadInput } from '@honey/api-contracts';
+import type { AppSettings, DictationOverlaySnapshot } from '@honey/api-contracts';
 
 export type DesktopWindowMode = 'full' | 'mini';
 
@@ -13,6 +14,18 @@ export interface DesktopShellCapabilities {
   canManageBackend: boolean;
 }
 
+export interface AudioInputDiagnosticsResult {
+  ok: true;
+  available: boolean;
+  backend: string;
+  defaultDeviceName?: string;
+  sampleFormat?: string;
+  channels?: number;
+  sampleRate?: number;
+  inputDevices: string[];
+  error?: string;
+}
+
 export type DesktopBackendProcessStatus = 'stopped' | 'running' | 'error';
 export type HoldToTalkCaptureState = 'listening' | 'captured' | 'cancelled';
 export type HoldToTalkHotkeyState = 'pressed' | 'released';
@@ -20,6 +33,7 @@ export type DesktopTextInsertionMethod = 'paste' | 'typing';
 export type DesktopTextInsertionStatus = 'preview' | 'inserted';
 export type HoldToTalkHotkeyUnlisten = () => void;
 export type HoldToTalkVolumeHandler = (volumeLevel: number) => void;
+export type DictationOverlaySnapshotHandler = (event: { snapshot: DictationOverlaySnapshot }) => void;
 
 export interface HoldToTalkHotkeyEvent {
   hotkey: string;
@@ -64,6 +78,7 @@ export interface DesktopBackendProcessResult {
 
 export interface DesktopShellClient {
   getCapabilities(): Promise<DesktopShellCapabilities>;
+  getAudioInputDiagnostics(): Promise<AudioInputDiagnosticsResult>;
   getBackendProcessStatus(): Promise<DesktopBackendProcessResult>;
   startBackendProcess(): Promise<DesktopBackendProcessResult>;
   stopBackendProcess(): Promise<DesktopBackendProcessResult>;
@@ -75,6 +90,10 @@ export interface DesktopShellClient {
   setTrayEnabled(enabled: boolean): Promise<{ ok: true; enabled: boolean }>;
   setStartupEnabled(enabled: boolean): Promise<{ ok: true; enabled: boolean }>;
   onWindowModeChange(handler: (mode: DesktopWindowMode) => void): Promise<HoldToTalkHotkeyUnlisten>;
+  publishDictationOverlaySnapshot(snapshot: DictationOverlaySnapshot): Promise<{ ok: true }>;
+  onDictationOverlaySnapshot(handler: DictationOverlaySnapshotHandler): Promise<HoldToTalkHotkeyUnlisten>;
+  setOverlayWindowVisible(visible: boolean, position?: AppSettings['overlayPosition']): Promise<{ ok: true; visible: boolean }>;
+  setOverlayCenterOffset(offsetX: number, position?: AppSettings['overlayPosition']): Promise<{ ok: true; offsetX: number }>;
   registerHoldToTalkHotkey(input: { hotkey: string }): Promise<RegisterHoldToTalkHotkeyResult>;
   unregisterHoldToTalkHotkey(): Promise<UnregisterHoldToTalkHotkeyResult>;
   onHoldToTalkHotkey(handler: (event: HoldToTalkHotkeyEvent) => void): Promise<HoldToTalkHotkeyUnlisten>;
@@ -107,6 +126,7 @@ declare global {
 const desktopWindowModeEventName = 'honey://desktop-window-mode';
 const holdToTalkHotkeyEventName = 'honey://hold-to-talk-hotkey';
 const holdToTalkVolumeEventName = 'honey://hold-to-talk-volume';
+const dictationOverlaySnapshotEventName = 'honey://dictation-overlay-snapshot';
 
 const fallbackCapabilities: DesktopShellCapabilities = {
   backendTransport: 'http',
@@ -126,7 +146,15 @@ const fallbackBackendProcessResult = (): DesktopBackendProcessResult => ({
   managed: false,
 });
 
-const fallbackCaptureResult = (state: HoldToTalkCaptureState, hotkey = 'CapsLock'): HoldToTalkCaptureResult => ({
+const fallbackAudioInputDiagnosticsResult = (): AudioInputDiagnosticsResult => ({
+  ok: true,
+  available: false,
+  backend: 'browser-preview',
+  inputDevices: [],
+  error: 'tauri_unavailable',
+});
+
+const fallbackCaptureResult = (state: HoldToTalkCaptureState, hotkey = 'F9'): HoldToTalkCaptureResult => ({
   ok: true,
   state,
   hotkey,
@@ -386,6 +414,14 @@ const isDesktopBackendProcessStatus = (value: unknown): value is DesktopBackendP
   value === 'stopped' || value === 'running' || value === 'error';
 const isHoldToTalkHotkeyState = (value: unknown): value is HoldToTalkHotkeyState =>
   value === 'pressed' || value === 'released';
+const isDictationOverlayState = (value: unknown): value is DictationOverlaySnapshot['state'] =>
+  value === 'idle'
+  || value === 'listening'
+  || value === 'silent'
+  || value === 'recognizing'
+  || value === 'completed'
+  || value === 'inserted'
+  || value === 'failed';
 const isDesktopTextInsertionMethod = (value: unknown): value is DesktopTextInsertionMethod =>
   value === 'paste' || value === 'typing';
 const isDesktopTextInsertionStatus = (value: unknown): value is DesktopTextInsertionStatus =>
@@ -512,6 +548,35 @@ const parseBackendProcessResult = (value: unknown): DesktopBackendProcessResult 
   };
 };
 
+const parseAudioInputDiagnosticsResult = (value: unknown): AudioInputDiagnosticsResult => {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid audio input diagnostics response');
+  }
+
+  const result = value as Partial<AudioInputDiagnosticsResult>;
+  if (
+    result.ok !== true
+    || typeof result.available !== 'boolean'
+    || typeof result.backend !== 'string'
+    || !Array.isArray(result.inputDevices)
+    || result.inputDevices.some(device => typeof device !== 'string')
+  ) {
+    throw new Error('Invalid audio input diagnostics response');
+  }
+
+  return {
+    ok: true,
+    available: result.available,
+    backend: result.backend,
+    defaultDeviceName: typeof result.defaultDeviceName === 'string' ? result.defaultDeviceName : undefined,
+    sampleFormat: typeof result.sampleFormat === 'string' ? result.sampleFormat : undefined,
+    channels: typeof result.channels === 'number' ? result.channels : undefined,
+    sampleRate: typeof result.sampleRate === 'number' ? result.sampleRate : undefined,
+    inputDevices: result.inputDevices,
+    error: typeof result.error === 'string' ? result.error : undefined,
+  };
+};
+
 const parseHoldToTalkCaptureResult = (value: unknown): HoldToTalkCaptureResult => {
   if (!value || typeof value !== 'object') {
     throw new Error('Invalid hold-to-talk capture response');
@@ -604,6 +669,30 @@ const parseDesktopWindowModeEvent = (value: unknown): DesktopWindowMode | undefi
   return isDesktopWindowMode(event.mode) ? event.mode : undefined;
 };
 
+const isDictationOverlaySnapshot = (value: unknown): value is DictationOverlaySnapshot => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const snapshot = value as Partial<DictationOverlaySnapshot>;
+  return (
+    isDictationOverlayState(snapshot.state)
+    && (snapshot.mode === 'direct' || snapshot.mode === 'persona')
+    && typeof snapshot.volumeLevel === 'number'
+  );
+};
+
+const parseDictationOverlaySnapshotEvent = (value: unknown) => {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const event = value as Partial<{ snapshot: unknown }>;
+  return isDictationOverlaySnapshot(event.snapshot)
+    ? { snapshot: event.snapshot }
+    : undefined;
+};
+
 const parseHoldToTalkVolumeLevel = (value: unknown) => {
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -661,6 +750,12 @@ export function createDesktopShellClient(): DesktopShellClient {
     async getCapabilities() {
       const invoke = getTauriInvoke();
       return invoke ? parseCapabilities(await invoke('honey_desktop_capabilities')) : fallbackCapabilities;
+    },
+    async getAudioInputDiagnostics() {
+      const invoke = getTauriInvoke();
+      return invoke
+        ? parseAudioInputDiagnosticsResult(await invoke('honey_get_audio_input_diagnostics'))
+        : fallbackAudioInputDiagnosticsResult();
     },
     async getBackendProcessStatus() {
       const invoke = getTauriInvoke();
@@ -772,6 +867,68 @@ export function createDesktopShellClient(): DesktopShellClient {
         }
       });
     },
+    async publishDictationOverlaySnapshot(snapshot) {
+      const invoke = getTauriInvoke();
+      if (!invoke) {
+        return { ok: true };
+      }
+
+      const result = await invoke('honey_publish_dictation_overlay_snapshot', { snapshot }) as { ok?: unknown };
+      if (result.ok !== true) {
+        throw new Error('Invalid overlay snapshot publish response');
+      }
+
+      return { ok: true };
+    },
+    async onDictationOverlaySnapshot(handler) {
+      const listen = getTauriListen();
+      if (!listen) {
+        return () => undefined;
+      }
+
+      return listen(dictationOverlaySnapshotEventName, (event) => {
+        const payload = parseDictationOverlaySnapshotEvent(event.payload);
+        if (payload) {
+          handler(payload);
+        }
+      });
+    },
+    async setOverlayWindowVisible(visible, position = 'bottom-center') {
+      const invoke = getTauriInvoke();
+      if (!invoke) {
+        return { ok: true, visible };
+      }
+
+      const result = await invoke('honey_set_overlay_window_visible', { visible, position }) as { ok?: unknown; visible?: unknown };
+      if (result.ok !== true || typeof result.visible !== 'boolean') {
+        throw new Error('Invalid overlay visibility response');
+      }
+
+      return {
+        ok: true,
+        visible: result.visible,
+      };
+    },
+    async setOverlayCenterOffset(offsetX, position = 'bottom-center') {
+      const invoke = getTauriInvoke();
+      const normalizedOffsetX = Math.round(offsetX);
+      if (!invoke) {
+        return { ok: true, offsetX: normalizedOffsetX };
+      }
+
+      const result = await invoke('honey_set_overlay_center_offset', {
+        offsetX: normalizedOffsetX,
+        position,
+      }) as { ok?: unknown; offsetX?: unknown };
+      if (result.ok !== true || typeof result.offsetX !== 'number') {
+        throw new Error('Invalid overlay center offset response');
+      }
+
+      return {
+        ok: true,
+        offsetX: result.offsetX,
+      };
+    },
     async registerHoldToTalkHotkey(input) {
       const invoke = getTauriInvoke();
       if (!invoke) {
@@ -808,7 +965,9 @@ export function createDesktopShellClient(): DesktopShellClient {
     async startHoldToTalkCapture(input) {
       const invoke = getTauriInvoke();
       if (invoke) {
-        await startNativeVolumeListener(input.onVolumeLevel);
+        await startNativeVolumeListener(input.onVolumeLevel).catch((error: unknown) => {
+          console.warn('hold-to-talk native volume listener unavailable', error);
+        });
         try {
           return parseHoldToTalkCaptureResult(await invoke('honey_start_hold_to_talk_capture', { hotkey: input.hotkey }));
         } catch (error) {
@@ -835,7 +994,7 @@ export function createDesktopShellClient(): DesktopShellClient {
         ? {
           ok: true,
           state: 'captured',
-          hotkey: 'CapsLock',
+          hotkey: 'F9',
           audioCapture,
         }
         : fallbackCaptureResult('captured');

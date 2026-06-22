@@ -1,36 +1,26 @@
-import { AlertCircle, CheckCircle2, Loader2, Mic2 } from 'lucide-react';
 import type { AppSettings, DictationOverlaySnapshot } from '@honey/api-contracts';
 
-import { mockWaveform } from '@/data/mockData';
+import { VoiceStatusBar } from '@/components/ui/VoiceStatusBar';
 
-const statusText: Record<DictationOverlaySnapshot['state'], string> = {
-  idle: '',
-  listening: '正在听',
-  silent: '等待声音',
-  recognizing: '正在识别',
-  completed: '识别完成',
-  inserted: '已输入',
-  failed: '出现问题',
+const compactStatusText: Partial<Record<DictationOverlaySnapshot['state'], string>> = {
+  recognizing: '正在识别中…',
+  failed: '识别失败',
 };
 
-const modeText = {
-  direct: '直接转写',
-  persona: '人设模式',
-};
+const visibleStates = [
+  'listening',
+  'silent',
+  'recognizing',
+  'completed',
+  'inserted',
+  'failed',
+] as const;
 
-const iconForState = (state: DictationOverlaySnapshot['state']) => {
-  if (state === 'recognizing') {
-    return <Loader2 className="spin" size={18} />;
-  }
-  if (state === 'completed' || state === 'inserted') {
-    return <CheckCircle2 size={18} />;
-  }
-  if (state === 'failed') {
-    return <AlertCircle size={18} />;
-  }
+type VisibleOverlayState = (typeof visibleStates)[number];
 
-  return <Mic2 size={18} />;
-};
+const isVisibleOverlayState = (
+  state: DictationOverlaySnapshot['state'],
+): state is VisibleOverlayState => visibleStates.includes(state as VisibleOverlayState);
 
 export function DictationOverlay({
   snapshot,
@@ -39,44 +29,25 @@ export function DictationOverlay({
   snapshot: DictationOverlaySnapshot;
   position?: AppSettings['overlayPosition'];
 }) {
-  if (snapshot.state === 'idle') {
+  if (!isVisibleOverlayState(snapshot.state)) {
     return null;
   }
 
-  const waveformActive = snapshot.state === 'listening' && snapshot.volumeLevel > 0.05;
+  const displayText = snapshot.previewText
+    || snapshot.errorMessage
+    || compactStatusText[snapshot.state]
+    || '';
 
   return (
-    <div
+    <VoiceStatusBar
       className={`dictation-overlay dictation-overlay--${position} dictation-overlay--${snapshot.state}`}
+      data-state={snapshot.state}
+      state={snapshot.state}
+      text={displayText}
+      volumeLevel={snapshot.volumeLevel}
       role="status"
-      aria-live="polite"
-    >
-      <div className="dictation-overlay__status">
-        {iconForState(snapshot.state)}
-        <span>{statusText[snapshot.state]}</span>
-      </div>
-
-      <div
-        className="dictation-overlay__waveform"
-        data-testid="dictation-waveform"
-        data-active={waveformActive ? 'true' : 'false'}
-        aria-label={waveformActive ? '检测到声音' : '未检测到声音'}
-      >
-        {mockWaveform.map((height, index) => (
-          <span
-            key={`${height}-${index}`}
-            style={{
-              height: `${waveformActive ? 10 + height * snapshot.volumeLevel * 34 : 10}px`,
-              animationDelay: `${index * 42}ms`,
-            }}
-          />
-        ))}
-      </div>
-
-      {snapshot.previewText ? <p className="dictation-overlay__preview">{snapshot.previewText}</p> : null}
-      {snapshot.errorMessage ? <p className="dictation-overlay__error">{snapshot.errorMessage}</p> : null}
-
-      <span className="dictation-overlay__mode">{modeText[snapshot.mode]}</span>
-    </div>
+      aria-label="语音输入音量浮层"
+      aria-live="off"
+    />
   );
 }

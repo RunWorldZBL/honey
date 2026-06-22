@@ -118,6 +118,22 @@ body {
   background: var(--background);
 }
 
+html[data-window="overlay"] {
+  background: transparent !important;
+}
+
+body[data-window="overlay"] {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+html[data-window="overlay"] body,
+html[data-window="overlay"] #root {
+  background: transparent !important;
+}
+
 button,
 input,
 textarea,
@@ -181,7 +197,6 @@ select:focus {
 .record-card__actions,
 .model-card__head,
 .file-task__main,
-.dictation-overlay__status,
 .mini-window__header,
 .mini-window__status,
 .theme-switcher,
@@ -579,21 +594,74 @@ select:focus {
   background: var(--background);
 }
 
+.desktop-overlay-stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
 .dictation-overlay {
+  --dictation-overlay-frame-height: 28px;
+  --dictation-overlay-content-height: 16px;
+  --dictation-overlay-icon-size: 18px;
+  --dictation-overlay-audio-width: 56px;
+  --dictation-overlay-text-width: var(--dictation-overlay-audio-width);
   position: fixed;
   bottom: 42px;
   z-index: 20;
   display: grid;
-  grid-template-columns: auto minmax(160px, 240px) minmax(160px, 360px) auto;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
   align-items: center;
-  gap: 12px;
-  width: min(820px, calc(100vw - 48px));
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: color-mix(in oklch, var(--card) 92%, transparent);
-  box-shadow: var(--shadow);
-  padding: 12px 14px;
-  backdrop-filter: blur(12px);
+  gap: 5px;
+  width: max-content;
+  height: var(--dictation-overlay-frame-height);
+  overflow: hidden;
+  border: 1px solid oklch(1 0 0 / 0.48);
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      180deg,
+      oklch(1 0 0 / 0.78),
+      oklch(0.9 0.012 158 / 0.58)
+    ),
+    linear-gradient(
+      90deg,
+      oklch(0.74 0.09 154 / 0.58),
+      oklch(0.75 0.02 210 / 0.36) 50%,
+      oklch(0.46 0.012 250 / 0.28)
+    );
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.76),
+    inset 0 -1px 0 oklch(0.18 0.01 250 / 0.08),
+    0 8px 18px oklch(0.14 0.02 250 / 0.14);
+  color: oklch(0.2 0.015 250 / 0.78);
+  padding: 0 6px;
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+}
+
+.dark .dictation-overlay {
+  border-color: oklch(1 0 0 / 0.58);
+  background:
+    linear-gradient(
+      180deg,
+      oklch(0.92 0.018 156 / 0.72),
+      oklch(0.62 0.02 170 / 0.58)
+    ),
+    linear-gradient(
+      90deg,
+      oklch(0.73 0.095 154 / 0.66),
+      oklch(0.54 0.02 210 / 0.58) 50%,
+      oklch(0.34 0.012 250 / 0.66)
+    );
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.5),
+    inset 0 -1px 0 oklch(0 0 0 / 0.18),
+    0 9px 20px oklch(0.04 0.02 252 / 0.42);
+  color: oklch(0.12 0.012 160 / 0.78);
 }
 
 .dictation-overlay--bottom-center {
@@ -614,50 +682,131 @@ select:focus {
   bottom: 32px;
 }
 
-.dictation-overlay__status {
-  gap: 8px;
-  white-space: nowrap;
+.desktop-overlay-stage .dictation-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: fit-content;
+  transform: translateX(-50%);
 }
 
-.dictation-overlay__waveform {
+.voice-status-bar__icon,
+.voice-status-bar__content,
+.voice-status-bar__visual,
+.voice-status-bar__quiet-dots {
   display: flex;
   align-items: center;
+}
+
+.voice-status-bar__icon {
   justify-content: center;
-  gap: 5px;
-  min-height: 42px;
+  width: var(--dictation-overlay-icon-size);
+  height: var(--dictation-overlay-content-height);
+  color: currentColor;
 }
 
-.dictation-overlay__waveform span {
+.voice-status-bar__content {
+  min-width: 0;
+  height: var(--dictation-overlay-content-height);
+}
+
+.voice-status-bar__visual {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--dictation-overlay-audio-width);
+  height: var(--dictation-overlay-content-height);
+  overflow: hidden;
+  gap: 2px;
+  color: currentColor;
+}
+
+.voice-status-bar__visual > span {
+  --wave-height: 3px;
+  --wave-half-height: 2px;
+  position: relative;
   display: block;
-  width: 5px;
+  width: 2px;
+  height: var(--dictation-overlay-content-height);
   border-radius: 999px;
-  background: var(--primary);
-  opacity: 0.95;
+  opacity: 0.34;
+  transition:
+    opacity 100ms ease,
+    transform 100ms ease;
 }
 
-.dictation-overlay__waveform[data-active="true"] span {
-  animation: waveform 820ms ease-in-out infinite alternate;
+.voice-status-bar__visual::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  content: "";
+  background: currentColor;
+  border-radius: 999px;
+  opacity: 0.08;
+  transform: translateY(-50%);
 }
 
-.dictation-overlay__waveform[data-active="false"] span {
-  opacity: 0.35;
+.voice-status-bar__visual > span::before,
+.voice-status-bar__visual > span::after {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: var(--wave-half-height);
+  content: "";
+  background: currentColor;
+  border-radius: 999px;
+  transition:
+    height 100ms ease,
+    opacity 100ms ease,
+    transform 100ms ease;
 }
 
-.dictation-overlay__preview,
-.dictation-overlay__error {
+.voice-status-bar__visual > span::before {
+  bottom: 50%;
+}
+
+.voice-status-bar__visual > span::after {
+  top: 50%;
+}
+
+.voice-status-bar__visual[data-active="true"] > span::before,
+.voice-status-bar__visual[data-active="true"] > span::after {
+  transform-origin: center center;
+}
+
+.voice-status-bar__visual[data-active="true"] > span {
+  opacity: 0.98;
+}
+
+.voice-status-bar__visual[data-active="false"] > span {
+  opacity: 0.34;
+}
+
+.dictation-overlay__text {
   margin: 0;
+  display: block;
+  width: var(--dictation-overlay-text-width);
+  height: var(--dictation-overlay-content-height);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: currentColor;
+  font-size: 11px;
+  line-height: var(--dictation-overlay-content-height);
+  text-align: left;
 }
 
-.dictation-overlay__error {
-  color: var(--danger);
+.dictation-overlay--recognizing .dictation-overlay__text,
+.dictation-overlay--failed .dictation-overlay__text {
+  color: color-mix(in oklch, currentColor 78%, transparent);
 }
 
-.dictation-overlay__mode {
-  color: var(--muted-foreground);
-  white-space: nowrap;
+.dictation-overlay--completed .dictation-overlay__text,
+.dictation-overlay--inserted .dictation-overlay__text {
+  color: color-mix(in oklch, currentColor 92%, transparent);
 }
 
 .spin {

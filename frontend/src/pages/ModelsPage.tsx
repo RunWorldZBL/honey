@@ -423,7 +423,7 @@ function ModelSection({ title, models }: { title: string; models: ModelProfile[]
         )) : (
           <div className="empty-state">
             <strong>暂无模型</strong>
-            <span>后续可通过导入模型或扫描本地目录补齐。</span>
+            <span>选择模型目录后刷新清单，软件会扫描用户下载的本地模型。</span>
           </div>
         )}
       </div>
